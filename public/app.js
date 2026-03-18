@@ -1010,7 +1010,7 @@ function saveHist() {
 // ─── SIDEBAR DRAWER ───────────────────────────────────────────────────────────
 let drawerOpen = false;
 let activePanel = 'status';
-const drawerTitles = { status:'📊 Estado', stats:'📈 Estadísticas', minibar:'🛒 Minibar', records:'📋 Registros', caja:'💰 Caja' };
+const drawerTitles = { status:'📊 Estado', stats:'📈 Estadísticas', minibar:'🛒 Minibar', records:'📋 Registros', caja:'💰 Caja', inventario:'📦 Inventario' };
 
 function openDrawer(panel, btn) {
   const drawer = document.getElementById('sidebarDrawer');
@@ -1035,6 +1035,7 @@ function openDrawer(panel, btn) {
   if (panel === 'stats') updateStatsPanel();
   if (panel === 'records') renderRecords();
   if (panel === 'caja') renderCaja();
+  if (panel === 'inventario') renderInventario();
 }
 
 function closeDrawer() {
@@ -2091,6 +2092,10 @@ function toggleAdmin() {
   const btn = document.getElementById('btnAdmin');
   btn.classList.toggle('active', adminMode);
   btn.textContent = adminMode ? '🔧 ADMIN' : '🔧';
+  // Mostrar/ocultar botón inventario en el rail
+  const railInv = document.getElementById('rail-inventario');
+  if (railInv) railInv.style.display = adminMode ? '' : 'none';
+  if (!adminMode && activePanel === 'inventario') closeDrawer();
   toast(adminMode ? '🔧 Modo admin activado — click en cualquier habitación para editar' : '🔧 Modo admin desactivado');
 }
 
@@ -2720,6 +2725,101 @@ async function initApp() {
   saveDays();
   saveHist();
   render();
+}
+
+// ─── INVENTARIO (ADMIN) ──────────────────────────────────────────────────────
+let inventarioData = [];
+
+async function renderInventario() {
+  inventarioData = await api('inventario');
+  renderInvSelectores();
+  renderInvTabla();
+}
+
+function renderInvSelectores() {
+  // Para cargar, mostrar todos los productos del minibar
+  const optsCargar = minibarProducts.map(p =>
+    `<option value="${p.id}" data-precio="${p.price}">${p.name} — Bs ${p.price}</option>`
+  ).join('');
+
+  const selCargar = document.getElementById('inv-select-prod');
+  const selMover  = document.getElementById('inv-select-mover');
+  if (selCargar) selCargar.innerHTML = optsCargar;
+  if (selMover)  selMover.innerHTML  = inventarioData.length ? inventarioData.map(p =>
+    `<option value="${p.producto_id}">${p.nombre} (almacén: ${p.almacen})</option>`
+  ).join('') : '<option value="">— Sin stock en almacén —</option>';
+}
+
+function renderInvTabla() {
+  const el = document.getElementById('inv-tabla');
+  if (!el) return;
+  if (!inventarioData.length) {
+    el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:12px 0">Sin datos de inventario</div>';
+    return;
+  }
+  const rows = inventarioData.map(p => {
+    const esperado = p.vendido * p.precio;
+    const alerta = p.nevera <= 2 ? ' style="color:var(--red)"' : '';
+    return `<tr>
+      <td style="padding:4px 6px">${p.nombre}</td>
+      <td style="padding:4px 6px;text-align:center">${p.almacen}</td>
+      <td style="padding:4px 6px;text-align:center"${alerta}>${p.nevera}</td>
+      <td style="padding:4px 6px;text-align:center">${p.vendido}</td>
+      <td style="padding:4px 6px;text-align:right">Bs ${esperado}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="color:var(--text3);font-size:0.65rem;text-transform:uppercase">
+          <th style="padding:4px 6px;text-align:left">Producto</th>
+          <th style="padding:4px 6px">Almacén</th>
+          <th style="padding:4px 6px">Nevera</th>
+          <th style="padding:4px 6px">Vendido</th>
+          <th style="padding:4px 6px;text-align:right">Esperado</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function invCargar() {
+  const sel = document.getElementById('inv-select-prod');
+  const cantEl = document.getElementById('inv-cantidad');
+  const cantidad = parseInt(cantEl.value);
+  if (!sel.value || !cantidad || cantidad <= 0) { toast('⚠ Seleccioná producto y cantidad'); return; }
+
+  const prod = minibarProducts.find(p => p.id == sel.value);
+  if (!prod) return;
+
+  const res = await api('inventario/cargar', 'POST', {
+    producto_id: prod.id,
+    nombre: prod.name,
+    precio: prod.price,
+    cantidad
+  });
+  if (res.ok) {
+    cantEl.value = '';
+    toast(`✓ ${cantidad} ${prod.name} cargados al almacén`);
+    renderInventario();
+  }
+}
+
+async function invMover() {
+  const sel = document.getElementById('inv-select-mover');
+  const cantEl = document.getElementById('inv-mover-cantidad');
+  const cantidad = parseInt(cantEl.value);
+  if (!sel.value || !cantidad || cantidad <= 0) { toast('⚠ Seleccioná producto y cantidad'); return; }
+
+  const res = await api('inventario/mover', 'POST', { producto_id: parseInt(sel.value), cantidad });
+  if (res.ok) {
+    cantEl.value = '';
+    const prod = inventarioData.find(p => p.producto_id == sel.value);
+    toast(`✓ ${cantidad} ${prod?.nombre || ''} movidos a nevera`);
+    renderInventario();
+  } else if (res.error) {
+    toast('❌ ' + res.error);
+  }
 }
 
 initApp();
