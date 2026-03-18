@@ -310,6 +310,29 @@ app.post('/api/inventario/vender', (req, res) => {
   res.json({ ok: true, tracked: true });
 });
 
+// POST: devolver unidades a nevera (cuando se edita carrito y se reduce qty)
+// body: { producto_id, cantidad }
+app.post('/api/inventario/devolver', (req, res) => {
+  const { producto_id, cantidad } = req.body;
+  if (!producto_id || !cantidad || cantidad <= 0)
+    return res.status(400).json({ error: 'Datos inválidos' });
+
+  const row = db.prepare('SELECT * FROM inventario WHERE producto_id = ?').get(producto_id);
+  if (!row) return res.json({ ok: true, tracked: false });
+
+  db.prepare(`
+    UPDATE inventario SET nevera = nevera + ?, vendido = MAX(0, vendido - ?)
+    WHERE producto_id = ?
+  `).run(cantidad, cantidad, producto_id);
+
+  db.prepare(`
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad)
+    VALUES (?, ?, 'devolucion', ?)
+  `).run(Date.now(), producto_id, cantidad);
+
+  res.json({ ok: true, tracked: true });
+});
+
 // GET: historial de movimientos (últimos 200)
 app.get('/api/inventario/movimientos', (req, res) => {
   const rows = db.prepare(`

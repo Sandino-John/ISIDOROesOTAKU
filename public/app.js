@@ -1217,10 +1217,28 @@ function confirmMinibar() {
     return { id:p.id, name:p.name, price:p.price, qty:mbCart[id] };
   });
 
-  // Deduct stock
+  // Calcular diferencia respecto al estado anterior (por si se edita)
+  const prev = occupancy[mbRoomNum].minibar || [];
+  const prevMap = {};
+  prev.forEach(i => { prevMap[i.id] = i.qty; });
+
+  // Deduct stock local y registrar ventas en inventario
   items.forEach(i => {
     const p = minibarProducts.find(p=>p.id===i.id);
-    if (p) p.stock -= i.qty;
+    const diff = i.qty - (prevMap[i.id] || 0);
+    if (p && diff > 0) p.stock -= diff;
+    if (diff > 0) {
+      api('inventario/vender', 'POST', { producto_id: i.id, cantidad: diff });
+    } else if (diff < 0) {
+      // Devolvió unidades — revertir en inventario
+      api('inventario/devolver', 'POST', { producto_id: i.id, cantidad: Math.abs(diff) });
+    }
+  });
+  // Si quitó items que antes estaban, también revertir
+  prev.forEach(i => {
+    if (!items.find(x=>x.id===i.id)) {
+      api('inventario/devolver', 'POST', { producto_id: i.id, cantidad: i.qty });
+    }
   });
 
   occupancy[mbRoomNum].minibar = items;
