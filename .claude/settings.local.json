@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l \"C:\\\\Users\\\\eduar\\\\Downloads\\\\hotel \\(11\\).html\")",
+      "Bash(wc -l \"C:\\\\motel23\\\\index.html\" \"C:\\\\Users\\\\eduar\\\\Downloads\\\\hotel \\(11\\).html\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(pandoc \"C:\\\\Users\\\\eduar\\\\Downloads\\\\REPORTE DIARIO MOTEL 23 FOR CLAUDE.docx\" -o /tmp/reporte_muestra.md)",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\eduar\\\\Downloads\\\\REPORTE DIARIO MOTEL 23 FOR CLAUDE.docx\" /tmp/reporte_unpacked/)",
+      "Bash(dir \"C:\\\\motel23\\\\temp_reporte\\\\word\"\")",
+      "Bash(dir /b /s C:motel23temp_reporte)",
+      "Bash(python -c \"import os; [print\\(os.path.join\\(r,f\\)\\) for r,d,fs in os.walk\\(r''C:\\\\motel23\\\\temp_reporte''\\) for f in fs]\")",
+      "Bash(python -c \"import os; print\\(os.path.exists\\(r''C:\\\\motel23\\\\temp_reporte''\\)\\); print\\(os.listdir\\(r''C:\\\\motel23''\\) if os.path.exists\\(r''C:\\\\motel23''\\) else ''no dir''\\)\")",
+      "Bash(python -c \"import shutil, os; p=r''C:\\\\motel23\\\\motel23temp_reporte 2''; shutil.rmtree\\(p\\) if os.path.exists\\(p\\) else print\\(''no existe''\\)\")",
+      "Bash(copy \"C:\\\\motel23\\\\index.html\" \"C:\\\\motel23\\\\public\\\\index.html\" /Y)",
+      "Bash(ls \"C:\\\\motel23\\\\public\\\\images\"\" 2>/dev/null || dir /b \"C:motel23publicimages \")",
+      "Bash(cmd /c \"powershell -NoProfile -Command \"\"Add-Type -AssemblyName System.Drawing; dir C:/motel23/public/images | % { $i=[System.Drawing.Image]::FromFile\\($_FullName\\); $_Name+'': ''+$i.Width+''x''+$i.Height; $i.Dispose\\(\\) }\"\"\")",
+      "Bash(pkill -f \"node server.js\")"
+    ]
+  }
+}

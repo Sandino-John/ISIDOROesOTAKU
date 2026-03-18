@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motel 23</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="logo" onclick="toggleDrawer()" style="cursor:pointer;user-select:none" title="Abrir/cerrar panel">
+    <div class="logo-mark">🦋</div>
+    <div class="logo-text">MOTEL <span>23</span></div>
+  </div>
+  <div class="header-stats">
+    <div class="hstat"><div class="hstat-val" id="h-occupied" style="color:var(--red)">0</div><div class="hstat-lbl">Ocupadas</div></div>
+    <div class="hstat"><div class="hstat-val" id="h-free" style="color:var(--green)">0</div><div class="hstat-lbl">Libres</div></div>
+    <div class="hstat"><div class="hstat-val" id="h-today" style="color:var(--gold)">Bs 0</div><div class="hstat-lbl">Turno actual</div></div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <div class="shift-badge"><div class="shift-dot" id="shiftDot"></div><span id="shiftLabel">—</span></div>
+    <button class="btn-shift" onclick="openShiftClose()">⏹ Cerrar turno</button>
+    <button class="btn-config" onclick="openConfig()">⚙ Tarifas</button>
+    <button class="btn-admin" id="btnAdmin" onclick="toggleAdmin()" title="Modo super usuario — editar horas de entrada">🔧</button>
+    <button class="btn-config" onclick="toggleFullscreen()" id="btn-fs" title="Pantalla completa">⛶</button>
+    <input type="file" id="backupFileInput" accept=".json" style="display:none" onchange="importBackup(event)">
+  </div>
+</header>
+
+<div class="app-layout">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <!-- RAIL: íconos siempre visibles -->
+  <div class="sidebar-rail">
+    <button class="rail-btn" id="rail-status" onclick="openDrawer('status',this)" title="Estado">
+      <span>📊</span>
+      <span class="rail-btn-label">Estado</span>
+      <span class="rail-badge" id="rail-badge" style="display:none"></span>
+    </button>
+    <button class="rail-btn" id="rail-stats" onclick="openDrawer('stats',this)" title="Estadísticas">
+      <span>📈</span>
+      <span class="rail-btn-label">Stats</span>
+    </button>
+    <button class="rail-btn" id="rail-minibar" onclick="openDrawer('minibar',this)" title="Minibar">
+      <span>🛒</span>
+      <span class="rail-btn-label">Minibar</span>
+    </button>
+    <button class="rail-btn" id="rail-records" onclick="openDrawer('records',this)" title="Registros">
+      <span>📋</span>
+      <span class="rail-btn-label">Registros</span>
+    </button>
+    <button class="rail-btn" id="rail-caja" onclick="openDrawer('caja',this)" title="Caja">
+      <span>💰</span>
+      <span class="rail-btn-label">Caja</span>
+    </button>
+  </div>
+
+  <!-- DRAWER: panel desplegable -->
+  <div class="sidebar-drawer" id="sidebarDrawer">
+    <div class="drawer-header">
+      <div class="drawer-title" id="drawerTitle">Estado</div>
+      <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    </div>
+
+    <!-- PANEL: ESTADO -->
+    <div class="sidebar-panel active" id="panel-status">
+      <div class="sb-section">
+        <div class="sb-label">Habitaciones</div>
+        <div class="status-bars">
+          <div class="status-bar-row">
+            <div class="status-bar-label" style="color:var(--red)">🔴 Ocupadas</div>
+            <div class="status-bar-track"><div class="status-bar-fill" id="sb-bar-occ" style="background:var(--red)"></div></div>
+            <div class="status-bar-val" id="sb-val-occ">0</div>
+          </div>
+          <div class="status-bar-row">
+            <div class="status-bar-label" style="color:var(--green)">🟢 Libres</div>
+            <div class="status-bar-track"><div class="status-bar-fill" id="sb-bar-free" style="background:var(--green)"></div></div>
+            <div class="status-bar-val" id="sb-val-free">0</div>
+          </div>
+          <div class="status-bar-row">
+            <div class="status-bar-label" style="color:var(--orange)">🧹 Limpieza</div>
+            <div class="status-bar-track"><div class="status-bar-fill" id="sb-bar-clean" style="background:var(--orange)"></div></div>
+            <div class="status-bar-val" id="sb-val-clean">0</div>
+          </div>
+        </div>
+      </div>
+      <div class="sb-divider"></div>
+      <div class="sb-section">
+        <div class="sb-label">Turno actual</div>
+        <div class="sb-stat-grid">
+          <div class="sb-stat"><div class="sb-stat-val" id="sb-turno-total" style="color:var(--gold)">Bs 0</div><div class="sb-stat-lbl">Recaudado</div></div>
+          <div class="sb-stat"><div class="sb-stat-val" id="sb-turno-time" style="color:var(--ac-color)">00:00</div><div class="sb-stat-lbl">Duración</div></div>
+          <div class="sb-stat"><div class="sb-stat-val" id="sb-turno-rooms" style="color:var(--text)">0</div><div class="sb-stat-lbl">Atendidas</div></div>
+          <div class="sb-stat"><div class="sb-stat-val" id="sb-turno-type" style="color:var(--text2);font-size:0.85rem">—</div><div class="sb-stat-lbl">Tipo turno</div></div>
+        </div>
+      </div>
+      <div class="sb-divider"></div>
+      <div class="sb-section">
+        <div class="sb-label">Alertas</div>
+        <div id="sb-alerts"><div style="font-size:0.75rem;color:var(--text3)">Sin alertas activas ✓</div></div>
+      </div>
+    </div>
+
+    <!-- PANEL: STATS -->
+    <div class="sidebar-panel" id="panel-stats">
+      <div class="stats-card">
+        <div class="stats-card-title">💰 Recaudación del día</div>
+        <div class="stats-row"><span>Total hoy</span><span class="stats-row-val" id="st-day-total">Bs 0</span></div>
+        <div class="stats-row"><span>Turno día</span><span class="stats-row-val" id="st-day-shift">Bs 0</span></div>
+        <div class="stats-row"><span>Turno noche</span><span class="stats-row-val" id="st-night-shift">Bs 0</span></div>
+        <div class="stats-row"><span>Minibar</span><span class="stats-row-val" id="st-minibar">Bs 0</span></div>
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">🏆 Por tipo de habitación</div>
+        <div class="stats-type-bar" id="st-type-bars"></div>
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">📋 Actividad</div>
+        <div class="stats-row"><span>Checkouts hoy</span><span class="stats-row-val" id="st-checkouts">0</span></div>
+        <div class="stats-row"><span>Más usada hoy</span><span class="stats-row-val" id="st-top-room">—</span></div>
+        <div class="stats-row"><span>Promedio estadía</span><span class="stats-row-val" id="st-avg-time">—</span></div>
+      </div>
+    </div>
+
+    <!-- PANEL: MINIBAR -->
+    <div class="sidebar-panel" id="panel-minibar">
+      <input class="mb-manage-search" id="mbSearchInput" placeholder="🔍 Buscar producto..." oninput="renderMbManage()">
+      <div class="mb-manage-list" id="mbManageList"></div>
+      <button class="mb-add-btn" onclick="addNewProduct()">+ Agregar producto</button>
+    </div>
+    <!-- PANEL: REGISTROS -->
+    <div class="sidebar-panel" id="panel-records">
+      <div id="rec-content" style="display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1"></div>
+      <div style="display:flex;gap:6px;padding:8px 0 4px;flex-shrink:0;flex-wrap:wrap">
+        <button onclick="generateDailyPrintReport()" style="flex:1 1 100%;padding:10px;background:linear-gradient(135deg,#c2410c,#ea580c);color:#fff;border:none;border-radius:8px;font-size:0.8rem;font-weight:700;cursor:pointer">🖨 Reporte Diario Imprimible</button>
+        <button onclick="generateConsolidatedReport()" style="flex:1;padding:8px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:0.72rem;font-weight:700;cursor:pointer">📊 JSON Consolidado</button>
+        <button onclick="viewActivityLog()" style="flex:1;padding:8px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer">📝 Log</button>
+      </div>
+    </div>
+
+    <!-- PANEL: CAJA -->
+    <div class="sidebar-panel" id="panel-caja">
+      <!-- Total en cajón -->
+      <div class="caja-total-card">
+        <div class="caja-total-label">💰 Total esperado en cajón</div>
+        <div class="caja-total-amount" id="caja-total">Bs 0</div>
+        <div class="caja-total-sub" id="caja-total-sub">Inicio: Bs 0 + Hab. Bs 0 + Minibar Bs 0 + Vitrina Bs 0 − Gastos Bs 0</div>
+      </div>
+
+      <!-- Monto inicial -->
+      <div>
+        <div class="caja-section-label">Monto inicial del turno</div>
+        <div class="caja-input-row">
+          <input class="caja-input-num" id="caja-inicio-val" type="number" min="0" placeholder="0" style="width:100%;font-size:1rem">
+          <button class="btn-caja-add" onclick="setCajaInicio()">✓ Fijar</button>
+        </div>
+        <div style="font-size:0.65rem;color:var(--text3);margin-top:4px" id="caja-inicio-label">No fijado aún</div>
+      </div>
+
+      <div class="caja-divider"></div>
+
+      <!-- Desglose ingresos -->
+      <div>
+        <div class="caja-section-label">Desglose del turno</div>
+        <div class="caja-breakdown">
+          <div class="caja-row">
+            <div class="caja-row-left"><div class="caja-row-label">🛏 Habitaciones</div><div class="caja-row-sub" id="caja-hab-sub">💵 Bs 0  📱 Bs 0</div></div>
+            <div class="caja-row-val positive" id="caja-hab-val">Bs 0</div>
+          </div>
+          <div class="caja-row">
+            <div class="caja-row-left"><div class="caja-row-label">🍺 Minibar</div><div class="caja-row-sub" id="caja-minibar-sub">💵 Bs 0  📱 Bs 0</div></div>
+            <div class="caja-row-val positive" id="caja-minibar-val">Bs 0</div>
+          </div>
+          <div class="caja-row">
+            <div class="caja-row-left"><div class="caja-row-label">🏪 Vitrina</div><div class="caja-row-sub" id="caja-vitrina-sub">💵 Bs 0  📱 Bs 0</div></div>
+            <div class="caja-row-val positive" id="caja-vitrina-val">Bs 0</div>
+          </div>
+          <div class="caja-row">
+            <div class="caja-row-left"><div class="caja-row-label">🔄 Cambios devueltos</div><div class="caja-row-sub">Sale del cajón físico</div></div>
+            <div class="caja-row-val negative" id="caja-cambios-val">Bs 0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="caja-divider"></div>
+
+      <!-- Egresos -->
+      <div>
+        <div class="caja-section-label">Egresos / Gastos</div>
+        <div class="caja-input-row" style="margin-bottom:6px">
+          <input class="caja-input" id="egreso-motivo" placeholder="Motivo del gasto..." style="font-size:0.75rem">
+          <input class="caja-input-num" id="egreso-monto" type="number" min="1" placeholder="Bs">
+          <button class="btn-caja-add red" onclick="addEgreso()">− Anotar</button>
+        </div>
+        <div class="egreso-list" id="egreso-list">
+          <div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px">Sin gastos anotados</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-size:0.75rem">
+          <span style="color:var(--text3)">Total gastos:</span>
+          <span style="font-family:'JetBrains Mono',monospace;color:var(--red);font-weight:700" id="caja-gastos-total">Bs 0</span>
+        </div>
+      </div>
+
+      <div class="caja-divider"></div>
+
+      <!-- BACKUP / RESTORE -->
+      <div>
+        <div class="caja-section-label">Respaldo de datos</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+          <button class="btn-backup" onclick="exportBackup()" style="width:100%;justify-content:center;padding:10px 14px;font-size:0.82rem">💾 Descargar backup completo</button>
+          <button class="btn-restore" onclick="triggerImportBackup()" style="width:100%;justify-content:center;padding:10px 14px;font-size:0.82rem">📂 Restaurar desde archivo</button>
+        </div>
+        <div style="font-size:0.65rem;color:var(--text3);text-align:center;margin-top:6px;line-height:1.4">
+          Exporta todos los datos (historial, turnos, caja) como archivo JSON descargable
+        </div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main class="main-content">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--ac-color)"></div>Aire Acondicionado (1,2,3,4,11)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--fan-color)"></div>Ventilador (5–10)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#86efac"></div>Ventilador (12–20)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Ocupada</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Libre</div>
+  </div>
+
+  <div class="section-title">Habitaciones</div>
+  <div class="rooms-grid" id="roomsGrid"></div>
+
+  <div class="section-title">Historial del día</div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+    <table class="history-table">
+      <thead>
+        <tr><th>Hab.</th><th>Transporte</th><th>Tipo</th><th>Entrada</th><th>Salida</th><th>Tiempo</th><th>Total</th></tr>
+      </thead>
+      <tbody id="historyBody">
+        <tr><td colspan="7" class="history-empty">Sin registros hoy</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+</div>
+
+<!-- RESTORE CONFIRMATION OVERLAY -->
+<div class="overlay" id="restoreOverlay">
+  <div class="modal" style="width:500px">
+    <div class="modal-header">
+      <div class="modal-title">📂 Restaurar backup</div>
+      <button class="modal-close" onclick="closeModal('restoreOverlay')">✕</button>
+    </div>
+    <div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:10px;padding:16px;margin-bottom:20px">
+      <div style="font-size:0.95rem;font-weight:700;color:var(--red);margin-bottom:8px">⚠ Acción irreversible</div>
+      <div style="font-size:0.88rem;color:var(--text2);line-height:1.6">Esto reemplazará <strong style="color:var(--text)">todos los datos actuales</strong> — historial, caja, turnos y habitaciones — con los datos del archivo seleccionado. No se puede deshacer.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:0.88rem">
+        <span style="color:var(--text3)">Fecha del backup</span>
+        <span id="restoreDate" style="font-family:'JetBrains Mono',monospace;color:var(--text)">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:0.88rem">
+        <span style="color:var(--text3)">Colecciones de datos</span>
+        <span id="restoreKeys" style="font-family:'JetBrains Mono',monospace;color:var(--ac-color)">—</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('restoreOverlay')">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmRestore()">✓ Sí, restaurar datos</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN EDIT MODAL -->
+<div class="overlay" id="adminOverlay" onclick="closeOverlay('adminOverlay',event)">
+  <div class="modal" style="width:580px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <div class="modal-title">🔧 <span id="admin-title">Editar</span> — Hab. <span id="admin-roomnum">—</span></div>
+      <button class="modal-close" onclick="closeModal('adminOverlay')">✕</button>
+    </div>
+    <div class="admin-warning">⚠ Super usuario — El cobro se recalcula según las horas.</div>
+    <div class="admin-field">
+      <label>Huésped / Vehículo</label>
+      <input type="text" id="admin-guest" placeholder="Descripción del vehículo o nombre">
+    </div>
+    <div style="display:flex;gap:10px">
+      <div class="admin-field" style="flex:1">
+        <label>Hora de entrada</label>
+        <input type="time" id="admin-checkin" oninput="updateAdminPreview()">
+      </div>
+      <div class="admin-field" style="flex:1">
+        <label>Hora de salida <small style="color:var(--text3)">(vacío = sigue ocupada)</small></label>
+        <input type="time" id="admin-checkout" oninput="updateAdminPreview()">
+      </div>
+    </div>
+    <div id="admin-preview" style="background:var(--surface2);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:0.88rem;color:var(--text2)"></div>
+
+    <!-- CONSUMOS -->
+    <div id="admin-consumos-section" style="display:none;margin-bottom:14px">
+      <div style="font-size:0.82rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">🛒 Consumos (minibar / vitrina)</div>
+      <div id="admin-products-grid" style="max-height:220px;overflow-y:auto;padding-right:2px"></div>
+      <div id="admin-cart-total" style="display:none;font-size:0.82rem;font-weight:700;color:var(--gold);margin-top:8px;text-align:right"></div>
+    </div>
+
+    <!-- PAGO HABITACIÓN -->
+    <div id="admin-pago-section" style="display:none">
+      <div style="font-size:0.82rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">🛏 Pago habitación</div>
+      <div class="pago-mix-row">
+        <div class="pago-mix-field">
+          <span class="pago-mix-label">💵 Efectivo</span>
+          <input class="pago-mix-input cash" type="number" min="0" id="admin-cash" value="0" oninput="updateAdminPago('cash')">
+        </div>
+        <div class="pago-mix-field">
+          <span class="pago-mix-label">📱 QR / Digital</span>
+          <input class="pago-mix-input qr" type="number" min="0" id="admin-qr" value="0" oninput="updateAdminPago('qr')">
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGO CONSUMOS -->
+    <div id="admin-extras-pago" style="display:none;margin-top:12px">
+      <div style="font-size:0.82rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">🛒 Pago consumos</div>
+      <div class="pago-mix-row">
+        <div class="pago-mix-field">
+          <span class="pago-mix-label">💵 Efectivo</span>
+          <input class="pago-mix-input cash" type="number" min="0" id="admin-extras-cash" value="0" oninput="updateAdminExtrasPago('cash')">
+        </div>
+        <div class="pago-mix-field">
+          <span class="pago-mix-label">📱 QR / Digital</span>
+          <input class="pago-mix-input qr" type="number" min="0" id="admin-extras-qr" value="0" oninput="updateAdminExtrasPago('qr')">
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer" style="margin-top:14px">
+      <button class="btn btn-ghost" onclick="closeModal('adminOverlay')">Cancelar</button>
+      <button class="btn btn-danger" id="admin-save-btn" onclick="saveAdminEdit()">✓ Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHECK-IN MODAL -->
+<div class="overlay" id="checkinOverlay" onclick="closeOverlay('checkinOverlay',event)">
+  <div class="modal" style="width:820px;min-height:505px;display:flex;flex-direction:column;padding:0;overflow-y:auto">
+    <div class="modal-header" style="padding:20px 24px 16px">
+      <div class="modal-title">Check-in</div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:10px">
+        <div class="room-info-num" id="ci-roomnum" style="font-size:1.4rem">—</div>
+        <div class="room-info-details">
+          <div class="room-info-type" id="ci-roomtype">—</div>
+          <div class="room-info-rate" id="ci-roomrate">—</div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModal('checkinOverlay')">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;flex:1;padding:16px 20px;gap:0">
+    <div class="form-group" style="flex:1;display:flex;flex-direction:column">
+      <label class="form-label">Ingresó en</label>
+      <div class="vehicle-grid" style="flex:1">
+        <div class="vehicle-btn" onclick="selectVehicle(this,'🛻 Camioneta')">🛻<span>Camioneta</span></div>
+        <div class="vehicle-btn" onclick="selectVehicle(this,'🚕 Trufi')">🚕<span>Trufi</span></div>
+        <div class="vehicle-btn" onclick="selectVehicle(this,'🚗 Vehículo')">🚗<span>Vehículo</span></div>
+        <div class="vehicle-btn" onclick="selectVehicle(this,'🚶 Pie')">🚶<span>Pie</span></div>
+        <div class="vehicle-btn" onclick="selectVehicle(this,'🚚 Camión')">🚚<span>Camión</span></div>
+        <div class="vehicle-btn" onclick="selectVehicle(this,'🚌 Bus')">🚌<span>Bus</span></div>
+        <div class="vehicle-btn" onclick="selectVehicle(this,'🚐 Micro')">🚐<span>Micro</span></div>
+        <div class="vehicle-btn" onclick="selectVehicle(this,'🏍 Moto')">🏍<span>Moto</span></div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">💰 Pago adelantado <small style="color:var(--text3)">(opcional)</small></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="ci-prepaid-grid"></div>
+      <div id="ci-prepaid-info" style="display:none;margin-top:8px;padding:8px 12px;background:var(--surface2);border-radius:8px;font-size:0.82rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="color:var(--text3)">Prepago:</span>
+          <span style="font-weight:700;color:var(--gold)" id="ci-prepaid-amount">—</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer">
+            <input type="radio" name="ci-prepaid-method" value="cash" checked> 💵 Efectivo
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer">
+            <input type="radio" name="ci-prepaid-method" value="qr"> 📱 QR
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer">
+            <input type="radio" name="ci-prepaid-method" value="mix"> 🔀 Mixto
+          </label>
+        </div>
+        <div id="ci-prepaid-mix" style="display:none;margin-top:6px;display:flex;gap:8px">
+          <div style="flex:1"><span style="font-size:0.7rem;color:var(--text3)">💵 Efectivo</span><input type="number" min="0" id="ci-prepaid-cash" class="pago-mix-input cash" value="0" oninput="updatePrepaidMix('cash')" style="width:100%;margin-top:2px"></div>
+          <div style="flex:1"><span style="font-size:0.7rem;color:var(--text3)">📱 QR</span><input type="number" min="0" id="ci-prepaid-qr" class="pago-mix-input qr" value="0" oninput="updatePrepaidMix('qr')" style="width:100%;margin-top:2px"></div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHECK-OUT MODAL -->
+<div class="overlay" id="checkoutOverlay" onclick="closeOverlay('checkoutOverlay',event)">
+  <div class="modal" style="width:820px;height:505px;display:flex;flex-direction:column;padding:0;overflow:hidden">
+    <div class="modal-header" style="padding:12px 24px 0;margin-bottom:0">
+      <div class="modal-title"><span style="background:linear-gradient(135deg,#f5c842,#e6a800);border-radius:6px;padding:2px 7px;margin-right:6px">🦋</span><span id="co-modal-title">Check-out</span></div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:10px">
+        <div class="room-info-num" id="co-roomnum">—</div>
+        <div class="room-info-details">
+          <div class="room-info-type" id="co-guest">—</div>
+          <div class="room-info-rate" id="co-checkin">—</div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModal('checkoutOverlay')">✕</button>
+    </div>
+    <div class="checkout-slider">
+      <div class="checkout-steps" id="checkoutSteps">
+
+        <!-- PASO 1: CUENTA -->
+        <div class="checkout-step" style="padding:8px 0 0">
+          <div class="bill" id="coBill" style="padding:0 24px"></div>
+          <div class="modal-footer" style="margin-top:auto;padding:10px 24px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <button class="btn btn-ghost" onclick="closeModal('checkoutOverlay')" style="padding:12px 0;font-size:0.9rem;justify-content:center">Cancelar</button>
+            <button class="btn btn-danger" onclick="openMinibarFromCheckout()" style="padding:12px 0;font-size:0.9rem;justify-content:center">🛒 Minibar</button>
+            <button class="btn btn-primary" onclick="slideToPago()" style="padding:12px 0;font-size:0.9rem;justify-content:center">Método de pago →</button>
+          </div>
+        </div>
+
+        <!-- PASO 2: MÉTODOS DE PAGO -->
+        <div class="checkout-step" style="display:flex;flex-direction:column">
+          <div style="padding:4px 0 8px;max-height:60vh;overflow-y:auto" id="pagoSections"></div>
+          <div class="pago-total-final">
+            <span class="pago-total-label">💰 Total a cobrar</span>
+            <span class="pago-total-val" id="pagoGrandTotal">Bs 0</span>
+          </div>
+          <div class="modal-footer" style="margin-top:auto;padding:10px 24px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <button class="btn btn-ghost" onclick="slideBack()" style="padding:12px 0;font-size:0.9rem;justify-content:center">← Volver</button>
+            <div></div>
+            <button class="btn btn-primary" onclick="slideToConfirm()" style="padding:12px 0;font-size:0.9rem;justify-content:center">Confirmar →</button>
+          </div>
+        </div>
+
+        <!-- PASO 3: CONFIRMACIÓN -->
+        <div class="checkout-step" style="display:flex;flex-direction:column">
+          <div class="confirm-screen">
+            <div class="confirm-icon">🚪</div>
+            <div class="confirm-title">¿Confirmar salida?</div>
+            <div class="confirm-subtitle" id="confirm-subtitle">Hab. — · —</div>
+            <div class="confirm-amount" id="confirm-amount">Bs 0</div>
+            <div id="confirm-pago-summary" style="font-size:0.72rem;color:var(--text3);text-align:center;margin-top:-6px"></div>
+          </div>
+          <div class="modal-footer" style="margin-top:auto;padding:10px 24px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <button class="btn btn-ghost" onclick="slideBackToConfirm()" style="padding:12px 0;font-size:0.9rem;justify-content:center">← Volver</button>
+            <div></div>
+            <button class="btn btn-primary" onclick="doCheckout()" style="padding:12px 0;font-size:0.9rem;justify-content:center">✓ Confirmar salida</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MINIBAR MODAL -->
+<div class="minibar-overlay" id="minibarOverlay" onclick="closeMinibarOutside(event)">
+  <div class="minibar-modal">
+    <div class="minibar-header">
+      <h3>🛒 Minibar — <span id="mb-roomlabel">Hab. —</span></h3>
+      <button class="modal-close" onclick="closeModal('minibarOverlay')">✕</button>
+    </div>
+    <div class="minibar-body">
+      <div class="minibar-products" id="mbProducts"></div>
+      <div class="minibar-cart">
+        <div class="cart-title">🧾 Pedido</div>
+        <div class="cart-items" id="cartItems"><div class="cart-empty">Vacío</div></div>
+        <div class="cart-divider"></div>
+        <div class="cart-total-row"><span>Total</span><span id="cartTotal">Bs 0</span></div>
+        <button class="btn-cart-confirm" onclick="confirmMinibar()">✓ Agregar al cuarto</button>
+        <button class="btn-cart-clear" onclick="clearCart()">✕ Limpiar</button>
+      </div>
+    </div>
+    <div class="minibar-footer">
+      <button class="btn btn-ghost" onclick="closeModal('minibarOverlay')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHIFT CLOSE MODAL -->
+<div class="overlay" id="shiftOverlay" onclick="closeOverlay('shiftOverlay',event)">
+  <div class="modal" style="width:640px">
+    <div class="modal-header">
+      <div class="modal-title" id="shiftModalTitle">⏹ Cierre de turno</div>
+      <button class="modal-close" onclick="closeModal('shiftOverlay')">✕</button>
+    </div>
+    <div id="shiftWarn" class="shift-warn" style="display:none">
+      ⚠ Hay <strong id="shiftWarnCount">0</strong> habitación(es) aún ocupada(s). Se cerrarán los checkouts pendientes al confirmar.
+    </div>
+    <div class="shift-summary" id="shiftSummary"></div>
+    <div class="shift-breakdown">
+      <h4>Detalle por habitación</h4>
+      <table class="shift-table">
+        <thead><tr><th>Hab.</th><th>Tipo</th><th>Transporte</th><th>Entrada</th><th>Salida</th><th>Tiempo</th><th>Total</th></tr></thead>
+        <tbody id="shiftTableBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('shiftOverlay')">Cancelar</button>
+      <button class="btn btn-danger" onclick="printShift()">🖨 Imprimir resumen</button>
+      <button class="btn btn-primary" onclick="confirmShiftClose()">✓ Confirmar cierre</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIG MODAL -->
+<div class="overlay" id="configOverlay" onclick="closeOverlay('configOverlay',event)">
+  <div class="modal" style="width:560px">
+    <div class="modal-header">
+      <div class="modal-title">⚙ Configurar tarifas</div>
+      <button class="modal-close" onclick="closeModal('configOverlay')">✕</button>
+    </div>
+    <div class="config-section">
+      <h4>❄ Aire Acondicionado (Bs total por tramo)</h4>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        <div class="config-row"><div class="config-label">1 hora</div><input class="config-input" id="cfg-ac-1" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">2 horas</div><input class="config-input" id="cfg-ac-2" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">3 horas</div><input class="config-input" id="cfg-ac-3" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">4 horas</div><input class="config-input" id="cfg-ac-4" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">5 horas</div><input class="config-input" id="cfg-ac-5" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">6h–12h</div><input class="config-input" id="cfg-ac-6" type="number" min="1"></div>
+      </div>
+    </div>
+    <div class="config-section">
+      <h4>🌀 Ventilador hab. 5–10 (Bs total por tramo)</h4>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        <div class="config-row"><div class="config-label">1 hora</div><input class="config-input" id="cfg-fan-1" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">2 horas</div><input class="config-input" id="cfg-fan-2" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">3 horas</div><input class="config-input" id="cfg-fan-3" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">4 horas</div><input class="config-input" id="cfg-fan-4" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">5h–12h</div><input class="config-input" id="cfg-fan-5" type="number" min="1"></div>
+      </div>
+    </div>
+    <div class="config-section">
+      <h4>🌿 Ventilador hab. 12–20 (Bs total por tramo)</h4>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+        <div class="config-row"><div class="config-label">1 hora</div><input class="config-input" id="cfg-fan2-1" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">2 horas</div><input class="config-input" id="cfg-fan2-2" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">3 horas</div><input class="config-input" id="cfg-fan2-3" type="number" min="1"></div>
+        <div class="config-row"><div class="config-label">4h–12h</div><input class="config-input" id="cfg-fan2-4" type="number" min="1"></div>
+      </div>
+    </div>
+    <div class="config-section">
+      <h4>🌙 Noche completa (12hs)</h4>
+      <div class="config-row"><div class="config-label">Precio fijo</div><input class="config-input" id="cfg-night" type="number" min="1"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('configOverlay')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveConfig()">Guardar tarifas</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
