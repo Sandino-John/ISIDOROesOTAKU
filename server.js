@@ -56,6 +56,24 @@ db.exec(`
     id INTEGER PRIMARY KEY CHECK (id = 1),
     datos TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS inventario (
+    producto_id INTEGER PRIMARY KEY,
+    nombre      TEXT NOT NULL,
+    precio      REAL NOT NULL,
+    almacen     INTEGER NOT NULL DEFAULT 0,
+    nevera      INTEGER NOT NULL DEFAULT 0,
+    vendido     INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS mov_inventario (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         INTEGER NOT NULL,
+    producto_id INTEGER NOT NULL,
+    tipo       TEXT NOT NULL,
+    cantidad   INTEGER NOT NULL,
+    nota       TEXT
+  );
 `);
 
 // ─── OCUPACION ────────────────────────────────────────────────────────────────
@@ -207,6 +225,110 @@ app.post('/api/guardar-archivo', (req, res) => {
     console.error('Error guardando archivo:', e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ─── INVENTARIO ──────────────────────────────────────────────────────────────
+
+// GET: estado actual de todo el inventario
+app.get('/api/inventario', (req, res) => {
+  const rows = db.prepare('SELECT * FROM inventario ORDER BY nombre').all();
+  res.json(rows);
+});
+
+// POST: admin carga stock al almacén
+// body: { producto_id, nombre, precio, cantidad }
+app.post('/api/inventario/cargar', (req, res) => {
+  const { producto_id, nombre, precio, cantidad } = req.body;
+  if (!producto_id || !cantidad || cantidad <= 0)
+    return res.status(400).json({ error: 'Datos inválidos' });
+
+  db.prepare(`
+    INSERT INTO inventario (producto_id, nombre, precio, almacen, nevera, vendido)
+    VALUES (?, ?, ?, ?, 0, 0)
+    ON CONFLICT(producto_id) DO UPDATE SET
+      nombre  = excluded.nombre,
+      precio  = excluded.precio,
+      almacen = almacen + excluded.almacen
+  `).run(producto_id, nombre, precio, cantidad);
+
+  db.prepare(`
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad, nota)
+    VALUES (?, ?, 'carga_almacen', ?, ?)
+  `).run(Date.now(), producto_id, cantidad, req.body.nota || null);
+
+  res.json({ ok: true });
+});
+
+// POST: recepcionista mueve almacén → nevera
+// body: { producto_id, cantidad }
+app.post('/api/inventario/mover', (req, res) => {
+  const { producto_id, cantidad } = req.body;
+  if (!producto_id || !cantidad || cantidad <= 0)
+    return res.status(400).json({ error: 'Datos inválidos' });
+
+  const row = db.prepare('SELECT * FROM inventario WHERE producto_id = ?').get(producto_id);
+  if (!row) return res.status(404).json({ error: 'Producto no encontrado' });
+  if (row.almacen < cantidad)
+    return res.status(400).json({ error: `Stock insuficiente en almacén (hay ${row.almacen})` });
+
+  db.prepare(`
+    UPDATE inventario SET almacen = almacen - ?, nevera = nevera + ?
+    WHERE producto_id = ?
+  `).run(cantidad, cantidad, producto_id);
+
+  db.prepare(`
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad)
+    VALUES (?, ?, 'almacen_a_nevera', ?)
+  `).run(Date.now(), producto_id, cantidad);
+
+  res.json({ ok: true });
+});
+
+// POST: registrar venta (llamado automáticamente al vender desde minibar)
+// body: { producto_id, cantidad }
+app.post('/api/inventario/vender', (req, res) => {
+  const { producto_id, cantidad } = req.body;
+  if (!producto_id || !cantidad || cantidad <= 0)
+    return res.status(400).json({ error: 'Datos inválidos' });
+
+  const row = db.prepare('SELECT * FROM inventario WHERE producto_id = ?').get(producto_id);
+  // Si el producto no está en inventario, ignorar silenciosamente
+  if (!row) return res.json({ ok: true, tracked: false });
+  if (row.nevera < cantidad)
+    return res.status(400).json({ error: `Stock insuficiente en nevera (hay ${row.nevera})` });
+
+  db.prepare(`
+    UPDATE inventario SET nevera = nevera - ?, vendido = vendido + ?
+    WHERE producto_id = ?
+  `).run(cantidad, cantidad, producto_id);
+
+  db.prepare(`
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad)
+    VALUES (?, ?, 'venta', ?)
+  `).run(Date.now(), producto_id, cantidad);
+
+  res.json({ ok: true, tracked: true });
+});
+
+// GET: historial de movimientos (últimos 200)
+app.get('/api/inventario/movimientos', (req, res) => {
+  const rows = db.prepare(`
+    SELECT m.*, i.nombre, i.precio
+    FROM mov_inventario m
+    LEFT JOIN inventario i ON i.producto_id = m.producto_id
+    ORDER BY m.id DESC LIMIT 200
+  `).all();
+  res.json(rows);
+});
+
+// GET: reporte de reconciliación (solo admin)
+app.get('/api/inventario/reconciliacion', (req, res) => {
+  const rows = db.prepare('SELECT * FROM inventario ORDER BY nombre').all();
+  const reporte = rows.map(r => ({
+    ...r,
+    ingresoEsperado: r.vendido * r.precio,
+  }));
+  res.json(reporte);
 });
 
 // ─── ARCHIVOS ESTÁTICOS ──────────────────────────────────────────────────────
