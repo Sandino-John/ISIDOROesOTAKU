@@ -1102,34 +1102,34 @@ function addNewProduct() {
 // ─── MINIBAR DATA ─────────────────────────────────────────────────────────────
 const DEFAULT_PRODUCTS = [
   // BEBIDAS
-  {id:1, cat:'🍺 Bebidas Alcohólicas', name:'Paceña Macanuda',  price:20, stock:30},
-  {id:2, cat:'🍺 Bebidas Alcohólicas', name:'Paceña Lata',      price:12, stock:30},
-  {id:3, cat:'🍺 Bebidas Alcohólicas', name:'Vino',             price:35, stock:15},
-  {id:4, cat:'🥤 Refrescos',           name:'Coca Cola Popular',price:8,  stock:30},
-  {id:5, cat:'🥤 Refrescos',           name:'Coca Mini',        price:3,  stock:50},
-  {id:6, cat:'🥤 Refrescos',           name:'Coca 2lt',         price:20, stock:20},
-  {id:7, cat:'🥤 Refrescos',           name:'Agua',             price:10, stock:40},
-  {id:8, cat:'🥤 Refrescos',           name:'Agua 2lt',         price:15, stock:20},
-  {id:9, cat:'🥤 Refrescos',           name:'Ades',             price:15, stock:20},
-  {id:10,cat:'⚡ Energizantes',        name:'Black',            price:10, stock:20},
-  {id:11,cat:'⚡ Energizantes',        name:'Ciclón',           price:8,  stock:20},
-  {id:12,cat:'⚡ Energizantes',        name:'Powerade',         price:15, stock:20},
+  {id:1,  cat:'🍺 Bebidas Alcohólicas', name:'Paceña Macanuda',  price:20, stock:30, img:'Paceña_Macanuda.jpg'},
+  {id:2,  cat:'🍺 Bebidas Alcohólicas', name:'Paceña Lata',      price:12, stock:30, img:'pacena.png'},
+  {id:3,  cat:'🍺 Bebidas Alcohólicas', name:'Vino',             price:35, stock:15, img:'Vino.png'},
+  {id:4,  cat:'🥤 Refrescos',           name:'Coca Cola Popular', price:8, stock:30, img:'coca_cola_popular.png'},
+  {id:5,  cat:'🥤 Refrescos',           name:'Coca Mini',        price:3,  stock:50, img:'Coca_cola_mini.png'},
+  {id:6,  cat:'🥤 Refrescos',           name:'Coca 2lt',         price:20, stock:20, img:'Coca_cola_2lt.jpg'},
+  {id:7,  cat:'🥤 Refrescos',           name:'Agua',             price:10, stock:40, img:'agua.png'},
+  {id:8,  cat:'🥤 Refrescos',           name:'Agua 2lt',         price:15, stock:20, img:'Agua_2lt.jpg'},
+  {id:9,  cat:'🥤 Refrescos',           name:'Ades',             price:15, stock:20, img:'Ades.png'},
+  {id:10, cat:'⚡ Energizantes',        name:'Black',            price:10, stock:20, img:'Black.png'},
+  {id:11, cat:'⚡ Energizantes',        name:'Ciclón',           price:8,  stock:20, img:'Ciclon.png'},
+  {id:12, cat:'⚡ Energizantes',        name:'Powerade',         price:15, stock:20, img:'powerade.png'},
   // VITRINA
-  {id:13,cat:'🍟 Snacks',              name:'Papa Frita',       price:7,  stock:30},
-  {id:14,cat:'🍟 Snacks',              name:'Chipilo',          price:7,  stock:30},
-  {id:15,cat:'🍟 Snacks',              name:'Maní',             price:7,  stock:30},
-  {id:16,cat:'🍟 Snacks',              name:'Nachos',           price:10, stock:20},
-  {id:17,cat:'💊 Farmacia / Adultos',  name:'pantera Suelto ',   price:5,  stock:50},
-  {id:18,cat:'💊 Farmacia / Adultos',  name:'Maxmen Suelto',    price:7,  stock:50},
-  {id:19,cat:'💊 Farmacia / Adultos',  name:'Pantera Caja',     price:12, stock:20},
-  {id:20,cat:'💊 Farmacia / Adultos',  name:'Maxmen Caja',      price:17, stock:20},
-  {id:21,cat:'💊 Farmacia / Adultos',  name:'Día D',            price:35, stock:15},
-  {id:22,cat:'💊 Farmacia / Adultos',  name:'Viagra',           price:15, stock:15},
-  {id:23,cat:'🧴 Higiene',             name:'Alikal',           price:8,  stock:20},
-  {id:24,cat:'🧴 Higiene',             name:'Encendedor',       price:2,  stock:30},
-  {id:25,cat:'🧴 Higiene',             name:'Jaboncillo',       price:10, stock:20},
-  {id:26,cat:'🧴 Higiene',             name:'Rasurador',        price:5,  stock:20},
-  {id:27,cat:'🧴 Higiene',             name:'Sedal',            price:4,  stock:20},
+  {id:13, cat:'🍟 Snacks',              name:'Papa Frita',       price:7,  stock:30, img:'Papas_fritas.jpg'},
+  {id:14, cat:'🍟 Snacks',              name:'Chipilo',          price:7,  stock:30, img:'Chipilo.jpg'},
+  {id:15, cat:'🍟 Snacks',              name:'Maní',             price:7,  stock:30, img:'mani.jpg'},
+  {id:16, cat:'🍟 Snacks',              name:'Nachos',           price:10, stock:20, img:'nachos.jpg'},
+  {id:17, cat:'💊 Farmacia / Adultos',  name:'Pantera Suelto',   price:5,  stock:50, img:'pantera_suelto.jpeg'},
+  {id:18, cat:'💊 Farmacia / Adultos',  name:'Maxmen Suelto',    price:7,  stock:50, img:'maxmen suelto.jpeg'},
+  {id:19, cat:'💊 Farmacia / Adultos',  name:'Pantera Caja',     price:12, stock:20, img:'pantera caja.jpg'},
+  {id:20, cat:'💊 Farmacia / Adultos',  name:'Maxmen Caja',      price:17, stock:20, img:'Maxmen caja.jpg'},
+  {id:21, cat:'💊 Farmacia / Adultos',  name:'Día D',            price:35, stock:15, img:'dia_d.png'},
+  {id:22, cat:'💊 Farmacia / Adultos',  name:'Viagra',           price:15, stock:15, img:'Maximo_viagra.png'},
+  {id:23, cat:'🧴 Higiene',             name:'Alikal',           price:8,  stock:20, img:'alikal.png'},
+  {id:24, cat:'🧴 Higiene',             name:'Encendedor',       price:2,  stock:30, img:'encendedor.jpg'},
+  {id:25, cat:'🧴 Higiene',             name:'Jaboncillo',       price:10, stock:20, img:'Jaboncillo.jpg'},
+  {id:26, cat:'🧴 Higiene',             name:'Rasurador',        price:5,  stock:20, img:'Rasurador.jpg'},
+  {id:27, cat:'🧴 Higiene',             name:'Sedal',            price:4,  stock:20, img:'Sedal.png'},
 ];
 let minibarProducts = [...DEFAULT_PRODUCTS];
 
@@ -1167,18 +1167,18 @@ function renderMbProducts() {
       const qty = mbCart[p.id] || 0;
       const oos = p.stock <= 0;
       html += `
-        <div class="mb-product${oos?' out-of-stock':''}">
-          <div class="mb-product-info">
+        <div class="mb-product${oos?' out-of-stock':''}"
+          onclick="mbChange(${p.id},1)"
+          oncontextmenu="mbChange(${p.id},-1);return false;">
+          ${p.img
+            ? `<img class="mb-product-img" src="images/${p.img}" alt="${p.name}">`
+            : `<div class="mb-product-noimg">📦</div>`}
+          <div class="mb-product-foot">
             <div class="mb-product-name">${p.name}</div>
-            <div class="mb-product-meta">
+            <div class="mb-foot-row">
               <span class="mb-product-price">Bs ${p.price}</span>
-              <span class="mb-product-stock">Stock: ${p.stock}</span>
+              <span class="mb-qty-badge${qty>0?' mb-qty-active':''}" id="mbqty-${p.id}">${qty>0?qty:''}</span>
             </div>
-          </div>
-          <div class="mb-qty-ctrl">
-            <button class="mb-qty-btn" onclick="mbChange(${p.id},-1)">−</button>
-            <span class="mb-qty-val" id="mbqty-${p.id}">${qty}</span>
-            <button class="mb-qty-btn" onclick="mbChange(${p.id},1)">+</button>
           </div>
         </div>`;
     });
@@ -1195,7 +1195,10 @@ function mbChange(id, delta) {
   if (newQty === 0) delete mbCart[id];
   else mbCart[id] = newQty;
   const el = document.getElementById('mbqty-'+id);
-  if (el) el.textContent = newQty;
+  if (el) {
+    el.textContent = newQty > 0 ? newQty : '';
+    el.classList.toggle('mb-qty-active', newQty > 0);
+  }
   renderCart();
 }
 
