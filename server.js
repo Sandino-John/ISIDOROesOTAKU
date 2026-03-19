@@ -357,7 +357,6 @@ app.get('/api/inventario/reconciliacion', (req, res) => {
 // ─── ARCHIVOS ESTÁTICOS ──────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.static(__dirname));
 
 // ─── ARRANCAR SERVIDOR ────────────────────────────────────────────────────────
 const PORT = 3000;

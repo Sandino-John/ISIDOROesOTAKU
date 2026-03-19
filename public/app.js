@@ -1171,7 +1171,7 @@ function renderMbProducts() {
           onclick="mbChange(${p.id},1)"
           oncontextmenu="mbChange(${p.id},-1);return false;">
           ${p.img
-            ? `<img class="mb-product-img" src="images/${p.img}" alt="${p.name}">`
+            ? `<img class="mb-product-img" src="/images/${p.img}" alt="${p.name}">`
             : `<div class="mb-product-noimg">📦</div>`}
           <div class="mb-product-foot">
             <div class="mb-product-name">${p.name}</div>
@@ -2718,7 +2718,18 @@ async function initApp() {
     if (histData && histData.length) history = histData;
     if (turnoData) currentShift = turnoData;
     if (turnosData && turnosData.length) shifts = turnosData;
-    if (prodData && prodData.length) minibarProducts = prodData;
+    if (prodData && prodData.length) {
+      // Enriquecer con imágenes del DEFAULT si faltan
+      let needsSave = false;
+      minibarProducts = prodData.map(p => {
+        if (!p.img) {
+          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id);
+          if (def) { p.img = def.img; needsSave = true; }
+        }
+        return p;
+      });
+      if (needsSave) saveProducts();
+    }
     if (cajaRes) cajaData = cajaRes;
     if (diasData && Object.keys(diasData).length) allDays = diasData;
     if (logData && logData.length) activityLog = logData;
