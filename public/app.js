@@ -1,9 +1,15 @@
 // ─── API HELPER ──────────────────────────────────────────────────────────────
 async function api(endpoint, method = 'GET', body = null) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== null) opts.body = JSON.stringify(body);
-  const res = await fetch('/api/' + endpoint, opts);
-  return res.json();
+  try {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body !== null) opts.body = JSON.stringify(body);
+    const res = await fetch('/api/' + endpoint, opts);
+    if (!res.ok) return null;
+    return res.json();
+  } catch(e) {
+    console.warn('API error:', endpoint, e);
+    return null;
+  }
 }
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────

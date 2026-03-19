@@ -56,6 +56,10 @@
       <span>💰</span>
       <span class="rail-btn-label">Caja</span>
     </button>
+    <button class="rail-btn admin-only" id="rail-inventario" onclick="openDrawer('inventario',this)" title="Inventario" style="display:none">
+      <span>📦</span>
+      <span class="rail-btn-label">Inventario</span>
+    </button>
   </div>
 
   <!-- DRAWER: panel desplegable -->
@@ -218,6 +222,38 @@
         </div>
       </div>
     </div>
+
+    <!-- PANEL: INVENTARIO (solo admin) -->
+    <div class="sidebar-panel" id="panel-inventario">
+      <!-- Cargar al almacén -->
+      <div class="caja-section" style="margin-bottom:10px">
+        <div class="caja-section-label">📥 Cargar al almacén</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          <select id="inv-select-prod" class="caja-input-num" style="width:100%;font-size:0.8rem;padding:6px 8px"></select>
+          <div style="display:flex;gap:6px">
+            <input id="inv-cantidad" type="number" min="1" placeholder="Cantidad" class="caja-input-num" style="flex:1">
+            <button class="btn-caja-add" onclick="invCargar()">+ Cargar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mover almacén → nevera -->
+      <div class="caja-section" style="margin-bottom:10px">
+        <div class="caja-section-label">🔄 Mover a nevera/vitrina</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          <select id="inv-select-mover" class="caja-input-num" style="width:100%;font-size:0.8rem;padding:6px 8px"></select>
+          <div style="display:flex;gap:6px">
+            <input id="inv-mover-cantidad" type="number" min="1" placeholder="Cantidad" class="caja-input-num" style="flex:1">
+            <button class="btn-caja-add" onclick="invMover()">→ Mover</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estado del inventario -->
+      <div class="caja-section-label" style="margin-bottom:6px">📊 Estado actual</div>
+      <div id="inv-tabla" style="font-size:0.75rem"></div>
+    </div>
+
   </div>
 </aside>
 
