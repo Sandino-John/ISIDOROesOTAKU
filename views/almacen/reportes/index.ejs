@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= titulo %> — Inventario</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>body{background:#f5f6fa;font-family:'Segoe UI',system-ui,sans-serif}.card{border-radius:10px}.table th{font-size:.82rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px}.table td{font-size:.9rem}</style>
+</head>
+<body>
+  <%- include('../_navbar') %>
+  <main class="container-fluid py-4 px-4">
+    <h4 class="fw-bold mb-4"><i class="bi bi-bar-chart me-2"></i>Reportes</h4>
+    <div class="row g-3 mb-4">
+      <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small">Valor Total Inventario</div>
+          <div class="fs-3 fw-bold text-success">Bs <%= valorTotal.toLocaleString('es-MX', {minimumFractionDigits:2}) %></div>
+        </div>
+      </div>
+      <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small">Total Productos</div>
+          <div class="fs-3 fw-bold"><%= stockActual.length %></div>
+        </div>
+      </div>
+      <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small">Productos Stock Bajo</div>
+          <div class="fs-3 fw-bold text-danger"><%= stockBajo.length %></div>
+        </div>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-white fw-semibold"><i class="bi bi-funnel me-2"></i>Movimientos por Periodo</div>
+      <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+          <div class="col-sm-3">
+            <label class="form-label small fw-semibold">Desde</label>
+            <input type="date" name="desde" class="form-control" value="<%= desde || '' %>">
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label small fw-semibold">Hasta</label>
+            <input type="date" name="hasta" class="form-control" value="<%= hasta || '' %>">
+          </div>
+          <div class="col-sm-2">
+            <label class="form-label small fw-semibold">Tipo</label>
+            <select name="tipo" class="form-select">
+              <option value="" <%= !tipo ? 'selected':'' %>>Todos</option>
+              <option value="entradas" <%= tipo==='entradas'?'selected':'' %>>Entradas</option>
+              <option value="salidas" <%= tipo==='salidas'?'selected':'' %>>Salidas</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <button class="btn btn-primary"><i class="bi bi-search me-1"></i>Buscar</button>
+            <a href="<%= baseUrl %>/reportes" class="btn btn-outline-secondary ms-1"><i class="bi bi-x"></i></a>
+          </div>
+        </form>
+      </div>
+    </div>
+    <% if (movimientos.length > 0) { %>
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-white fw-semibold">Movimientos (<%= movimientos.length %>)</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>Tipo</th><th>Fecha</th><th>Producto</th><th class="text-center">Cantidad</th><th class="text-end">Precio U.</th><th>Contraparte</th><th>Notas</th></tr></thead>
+            <tbody>
+              <% movimientos.forEach(m => { %>
+                <tr>
+                  <td><span class="badge <%= m.tipo === 'entrada' ? 'bg-success' : 'bg-warning text-dark' %>"><%= m.tipo %></span></td>
+                  <td class="text-muted small"><%= m.fecha %></td>
+                  <td class="fw-semibold"><%= m.producto %></td>
+                  <td class="text-center"><%= m.cantidad %></td>
+                  <td class="text-end">Bs <%= m.precio_unitario.toFixed(2) %></td>
+                  <td><%= m.contraparte || '—' %></td>
+                  <td class="text-muted small"><%= m.notas || '' %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <% } %>
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold"><i class="bi bi-list-ul me-2"></i>Stock Actual</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark"><tr><th>Nombre</th><th>Categoría</th><th class="text-center">Stock</th><th class="text-end">P. Compra</th><th class="text-end">P. Venta</th><th class="text-end">Valor</th></tr></thead>
+            <tbody>
+              <% stockActual.forEach(p => { %>
+                <tr class="<%= p.stock_actual <= p.stock_minimo ? 'table-warning' : '' %>">
+                  <td class="fw-semibold"><%= p.nombre %></td>
+                  <td><%= p.categoria_nombre || '—' %></td>
+                  <td class="text-center"><span class="badge <%= p.stock_actual === 0 ? 'bg-danger' : p.stock_actual <= p.stock_minimo ? 'bg-warning text-dark' : 'bg-success' %> fs-6"><%= p.stock_actual %></span></td>
+                  <td class="text-end">Bs <%= p.precio_compra.toFixed(2) %></td>
+                  <td class="text-end">Bs <%= p.precio_venta.toFixed(2) %></td>
+                  <td class="text-end fw-semibold">Bs <%= (p.valor_total || 0).toFixed(2) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+            <tfoot class="table-light">
+              <tr><td colspan="7" class="text-end fw-bold">Total Inventario:</td><td class="text-end fw-bold text-success">Bs <%= valorTotal.toLocaleString('es-MX', {minimumFractionDigits:2}) %></td></tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -48,6 +48,14 @@ function startNewShift() {
 
 function saveShift() { api('turno', 'POST', currentShift); }
 
+function backupToLocalStorage() {
+  try {
+    localStorage.setItem('motel23_backup', JSON.stringify({
+      currentShift, occupancy, cajaData, history, shifts, ts: Date.now()
+    }));
+  } catch(e) { /* localStorage lleno, ignorar */ }
+}
+
 // ─── ACTIVITY LOG ─────────────────────────────────────────────────────────────
 let activityLog = [];
 
@@ -145,6 +153,28 @@ function render() {
   const typeNames = { ac:'Aire Acond.', fan:'Ventilador', fan2:'Ventilador', simple:'Simple' };
 
   ROOM_DEFS.forEach(room => {
+    // Tarjeta especial: Almacén/Inventario en lugar de hab 20
+    if (room.num === 20) {
+      const card = document.createElement('div');
+      card.className = 'room-card almacen-card';
+      card.id = 'card-20';
+      card.onclick = () => openInventario();
+      card.innerHTML = `
+        <div style="position:absolute;top:4px;left:50%;transform:translateX(-50%);font-size:0.48rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.55);white-space:nowrap;z-index:2">ADMIN</div>
+        <div class="card-top">
+          <div class="room-number" style="font-size:1.2rem">📦</div>
+        </div>
+        <div class="card-body">
+          <div style="font-size:2.5rem">🏪</div>
+        </div>
+        <div class="card-bottom">
+          <div style="font-size:0.6rem;font-weight:800;padding:3px 8px;border-radius:20px;letter-spacing:0.8px;text-transform:uppercase;background:rgba(139,92,246,0.18);color:#a78bfa;border:1px solid rgba(139,92,246,0.35)">Almacén</div>
+        </div>
+      `;
+      grid.appendChild(card);
+      return;
+    }
+
     const occ = occupancy[room.num];
     const card = document.createElement('div');
     const isCleaning = occ && occ.cleaning;
@@ -227,16 +257,29 @@ function render() {
         </div>
         <div class="card-bottom">
           ${statusChip(ocupLabel, ocupBg, ocupColor, ocupBorder)}
+          <div class="click-controls" style="position:absolute;top:26px;right:6px;width:48px;height:48px;z-index:3">
+            <img src="/images/yang.png" class="click-ctrl" id="yang-${room.num}" onclick="toggleClickCtrl(${room.num},'yang',event)" title="Control Yang (blanco)" style="width:27px;position:absolute;top:31px;left:-4px;cursor:pointer;opacity:0.4;transition:opacity 0.2s">
+            <img src="/images/yin.png" class="click-ctrl" id="ying-${room.num}" onclick="toggleClickCtrl(${room.num},'ying',event)" title="Control Yin (negro)" style="width:27px;position:absolute;bottom:-42px;right:5px;cursor:pointer;opacity:0.4;transition:opacity 0.2s">
+          </div>
           <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:7px;align-items:center">
             <button style="background:${minibarTotal>0?'rgba(245,200,66,0.3)':'rgba(255,255,255,0.12)'};border:1px solid ${minibarTotal>0?'var(--gold)':'rgba(255,255,255,0.3)'};color:${minibarTotal>0?'var(--gold)':'rgba(255,255,255,0.7)'};border-radius:6px;padding:5px 22px;font-size:0.8rem;cursor:pointer;font-family:Outfit,sans-serif;font-weight:700;white-space:nowrap;min-width:90px;text-align:center" onclick="openMinibar(${room.num},event)">🛒${minibarTotal>0?' Bs '+minibarTotal:' Minibar'}</button>
           </div>
           <div style="position:absolute;bottom:6px;right:10px;line-height:1;text-align:right">
-            <span style="font-family:'Outfit',sans-serif;font-size:0.72rem;font-weight:600;color:#f5c842;letter-spacing:0.5px;text-shadow:0 0 8px rgba(245,200,66,0.8)">Bs </span><span style="font-family:'JetBrains Mono',monospace;font-size:2rem;font-weight:800;color:#f5c842;text-shadow:0 0 18px rgba(245,200,66,0.9),0 0 32px rgba(245,200,66,0.5)">${totalActual}</span>
+            <span style="font-family:'Outfit',sans-serif;font-size:0.72rem;font-weight:600;color:#f5c842;letter-spacing:0.5px;text-shadow:0 0 8px rgba(245,200,66,0.8)">Bs </span><span id="price-${room.num}" style="font-family:'JetBrains Mono',monospace;font-size:2rem;font-weight:800;color:#f5c842;text-shadow:0 0 18px rgba(245,200,66,0.9),0 0 32px rgba(245,200,66,0.5)">${totalActual}</span>
           </div>
         </div>
       `;
     }
     grid.appendChild(card);
+  });
+
+  // Restaurar estado de controles click
+  Object.keys(occupancy).forEach(num => {
+    const occ = occupancy[num];
+    if (occ && !occ.cleaning && occ.clickControls) {
+      if (occ.clickControls.ying) { const el = document.getElementById('ying-'+num); if(el) el.style.opacity='1'; }
+      if (occ.clickControls.yang) { const el = document.getElementById('yang-'+num); if(el) el.style.opacity='1'; }
+    }
   });
 
   updateStats();
@@ -386,10 +429,21 @@ function renderHistory() {
 // ─── TIMERS ───────────────────────────────────────────────────────────────────
 setInterval(() => {
   Object.keys(occupancy).forEach(num => {
+    try {
     const occ = occupancy[num];
-    if (occ.cleaning) return;
+    if (!occ || occ.cleaning) return;
     const el = document.getElementById('timer-' + num);
     if (el) el.textContent = formatDuration(Date.now() - occ.checkin);
+    // Precio en tiempo real
+    const priceEl = document.getElementById('price-' + num);
+    if (priceEl) {
+      const room = ROOM_DEFS.find(r => r.num == num);
+      if (room) {
+        const bill = calcBill(room, occ.checkin, Date.now());
+        const mbTotal = (occ.minibar||[]).reduce((s,i)=>s+i.price*i.qty, 0);
+        priceEl.textContent = bill.total + mbTotal;
+      }
+    }
     // Countdown prepago
     if (occ.prepaid) {
       const cdEl = document.getElementById('countdown-' + num);
@@ -405,6 +459,7 @@ setInterval(() => {
         }
       }
     }
+    } catch(e) { console.error('Timer error room '+num, e); }
   });
 }, 1000);
 
@@ -552,6 +607,7 @@ function doCheckin() {
 
   occupancy[selectedRoom.num] = occData;
   saveOcc();
+  backupToLocalStorage();
   closeModal('checkinOverlay');
   render();
   const ppMsg = occData.prepaid ? ` · Prepago ${occData.prepaid.hours}h Bs ${occData.prepaid.amount}` : '';
@@ -758,7 +814,6 @@ function slideToConfirm() {
     if (qr   > 0) summaryParts.push(`📱 Bs ${qr}${p.comision > 0 ? '+'+p.comision : ''}`);
     if (p.cambio > 0) summaryParts.push(`Cambio: Bs ${p.cambio}`);
   });
-
   document.getElementById('confirm-subtitle').textContent =
     `Hab. ${room.num} · ${typeNames[room.type]} · ${occ.guest}`;
   document.getElementById('confirm-amount').textContent = `Bs ${grandTotal}`;
@@ -1016,7 +1071,7 @@ function saveHist() {
 // ─── SIDEBAR DRAWER ───────────────────────────────────────────────────────────
 let drawerOpen = false;
 let activePanel = 'status';
-const drawerTitles = { status:'📊 Estado', stats:'📈 Estadísticas', minibar:'🛒 Minibar', records:'📋 Registros', caja:'💰 Caja', inventario:'📦 Inventario' };
+const drawerTitles = { status:'📊 Estado', stats:'📈 Estadísticas', minibar:'🛒 Minibar', records:'📋 Registros', caja:'💰 Caja', personal:'👤 Personal', inventario:'📦 Inventario' };
 
 function openDrawer(panel, btn) {
   const drawer = document.getElementById('sidebarDrawer');
@@ -1040,8 +1095,9 @@ function openDrawer(panel, btn) {
   if (panel === 'minibar') renderMbManage();
   if (panel === 'stats') updateStatsPanel();
   if (panel === 'records') renderRecords();
-  if (panel === 'caja') renderCaja();
-  if (panel === 'inventario') renderInventario();
+  if (panel === 'caja') { if (cajaTab === 'tiempo') renderCaja(); else renderStockTab(cajaTab); }
+  if (panel === 'personal') renderPersonalPanel();
+  if (panel === 'inventario') inv_render();
 }
 
 function closeDrawer() {
@@ -1060,43 +1116,59 @@ function renderMbManage() {
   const filtered = minibarProducts.filter(p =>
     p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q)
   );
-  document.getElementById('mbManageList').innerHTML = filtered.map(p => `
+  const NEVERA_CATS = ['🍺 Bebidas Alcohólicas','🥤 Refrescos','⚡ Energizantes'];
+  const header = `<div style="display:flex;align-items:center;padding:4px 8px;border-bottom:1px solid var(--border);margin-bottom:4px">
+    <div style="flex:1;font-size:0.65rem;color:var(--text3);font-weight:600;text-transform:uppercase">Producto</div>
+    <div style="width:130px;display:flex;align-items:center;justify-content:space-between">
+      <div style="width:45px;text-align:center;font-size:0.75rem;color:var(--text3);font-weight:600">📦</div>
+      <div style="width:12px;text-align:center;font-size:0.6rem;color:var(--text3)">→</div>
+      <div style="width:45px;text-align:center;font-size:0.75rem;color:var(--text3);font-weight:600">🧊</div>
+    </div>
+  </div>`;
+  const rows = filtered.map(p => {
+    const isNevera = NEVERA_CATS.includes(p.cat);
+    const destino = isNevera ? 'nevera' : 'vitrina';
+    const canTransfer = (p.stock_almacen || 0) > 0;
+    return `
     <div class="mb-manage-item">
       <div style="flex:1;min-width:0">
         <div class="mb-manage-name">${p.name}</div>
         <div class="mb-manage-cat">${p.cat}</div>
       </div>
-      <input class="mb-manage-price" id="mbp-${p.id}" value="${p.price}" title="Precio Bs" type="number" min="1" onchange="saveMbProduct(${p.id})">
-      <input class="mb-manage-stock" id="mbs-${p.id}" value="${p.stock}" title="Stock" type="number" min="0" onchange="saveMbProduct(${p.id})">
-      <button class="btn-save-mini" onclick="saveMbProduct(${p.id})">✓</button>
-    </div>
-  `).join('') || '<div style="font-size:0.75rem;color:var(--text3);padding:8px">Sin resultados</div>';
+      <div style="width:130px;display:flex;align-items:center;justify-content:space-between">
+        <span style="width:45px;text-align:center;background:var(--surface2);padding:2px 4px;border-radius:4px;font-size:1rem;font-weight:700;color:var(--text2)">${p.stock_almacen || 0}</span>
+        <button onclick="transferStock(${p.inv_id || p.id}, '${destino}', '${p.name}')" style="width:12px;height:12px;background:${canTransfer ? '#22c55e' : '#555'};color:#fff;border:none;border-radius:2px;padding:0;font-size:0.4rem;line-height:12px;cursor:${canTransfer ? 'pointer' : 'not-allowed'};font-weight:700;flex-shrink:0" ${canTransfer ? '' : 'disabled'}>→</button>
+        <span style="width:45px;text-align:center;background:${p.stock <= 5 ? '#dc2626' : 'var(--surface2)'};padding:2px 4px;border-radius:4px;font-size:1rem;font-weight:700;color:${p.stock <= 5 ? '#fff' : 'var(--text1)'}">${p.stock}</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('mbManageList').innerHTML = (header + rows) || '<div style="font-size:0.75rem;color:var(--text3);padding:8px">Sin resultados</div>';
 }
 
-function saveMbProduct(id) {
-  const p = minibarProducts.find(p=>p.id===id);
-  if (!p) return;
-  const priceEl = document.getElementById('mbp-'+id);
-  const stockEl = document.getElementById('mbs-'+id);
-  if (priceEl) p.price = parseInt(priceEl.value)||p.price;
-  if (stockEl) p.stock = parseInt(stockEl.value)||0;
-  saveProducts();
-  toast(`✓ ${p.name} actualizado`);
-}
-
-function addNewProduct() {
-  const name = prompt('Nombre del producto:');
-  if (!name) return;
-  const price = parseInt(prompt('Precio (Bs):')||'0');
-  if (!price) return;
-  const cats = ['🍺 Bebidas Alcohólicas','🥤 Refrescos','⚡ Energizantes','🍟 Snacks','💊 Farmacia / Adultos','🧴 Higiene'];
-  const catIdx = prompt(`Categoría:\n${cats.map((c,i)=>`${i+1}. ${c}`).join('\n')}\n\nEscribí el número:`);
-  const cat = cats[(parseInt(catIdx)||1)-1] || cats[0];
-  const newId = Math.max(...minibarProducts.map(p=>p.id))+1;
-  minibarProducts.push({ id:newId, cat, name, price, stock:20 });
-  saveProducts();
-  renderMbManage();
-  toast(`✓ ${name} agregado`);
+async function transferStock(invId, destino, nombre) {
+  const cant = prompt(`¿Cuántas unidades de "${nombre}" pasar del almacén a ${destino}?`, '1');
+  if (!cant || isNaN(cant) || parseInt(cant) <= 0) return;
+  const cantidad = parseInt(cant);
+  try {
+    const endpoint = destino === 'nevera' ? 'inventario/mover-nevera' : 'inventario/mover-vitrina';
+    const res = await api(endpoint, 'POST', { inv_id: invId, cantidad });
+    if (res.error) { toast(`❌ ${res.error}`); return; }
+    // Recargar productos frescos
+    const freshProducts = await api('inventario/productos-minibar');
+    if (freshProducts && freshProducts.length) {
+      minibarProducts = freshProducts.map(p => {
+        if (!p.img) {
+          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id || d.name === p.name);
+          if (def) p.img = def.img;
+        }
+        return p;
+      });
+    }
+    renderMbManage();
+    toast(`✓ ${cantidad} ${nombre} → ${destino}`);
+  } catch(e) {
+    toast(`❌ Error al traspasar: ${e.message}`);
+  }
 }
 
 // ─── MINIBAR DATA ─────────────────────────────────────────────────────────────
@@ -1105,9 +1177,11 @@ const DEFAULT_PRODUCTS = [
   {id:1,  cat:'🍺 Bebidas Alcohólicas', name:'Paceña Macanuda',  price:20, stock:30, img:'Paceña_Macanuda.jpg'},
   {id:2,  cat:'🍺 Bebidas Alcohólicas', name:'Paceña Lata',      price:12, stock:30, img:'pacena.png'},
   {id:3,  cat:'🍺 Bebidas Alcohólicas', name:'Vino',             price:35, stock:15, img:'Vino.png'},
-  {id:4,  cat:'🥤 Refrescos',           name:'Coca Cola Popular', price:8, stock:30, img:'coca_cola_popular.png'},
-  {id:5,  cat:'🥤 Refrescos',           name:'Coca Mini',        price:3,  stock:50, img:'Coca_cola_mini.png'},
-  {id:6,  cat:'🥤 Refrescos',           name:'Coca 2lt',         price:20, stock:20, img:'Coca_cola_2lt.jpg'},
+  {id:4,  cat:'🥤 Refrescos',           name:'Coca Cola Popular', price:8, stock:30, img:'coca_cola_popular.webp'},
+  {id:5,  cat:'🥤 Refrescos',           name:'Coca Cola Personal', price:8, stock:30, img:'coca_cola_personal.webp'},
+  {id:6,  cat:'🥤 Refrescos',           name:'Coca 2lt',         price:20, stock:20, img:'coca_cola_2lt.webp'},
+  {id:32, cat:'🥤 Refrescos',           name:'Coca Cola Mini',   price:3,  stock:50, img:'coca_cola_mini.webp'},
+  {id:33, cat:'🥤 Refrescos',           name:'Soda 2 lts.',      price:20, stock:20, img:'Soda_2_lts..webp'},
   {id:7,  cat:'🥤 Refrescos',           name:'Agua',             price:10, stock:40, img:'agua.png'},
   {id:8,  cat:'🥤 Refrescos',           name:'Agua 2lt',         price:15, stock:20, img:'Agua_2lt.jpg'},
   {id:9,  cat:'🥤 Refrescos',           name:'Ades',             price:15, stock:20, img:'Ades.png'},
@@ -1130,13 +1204,15 @@ const DEFAULT_PRODUCTS = [
   {id:25, cat:'🧴 Higiene',             name:'Jaboncillo',       price:10, stock:20, img:'Jaboncillo.jpg'},
   {id:26, cat:'🧴 Higiene',             name:'Rasurador',        price:5,  stock:20, img:'Rasurador.jpg'},
   {id:27, cat:'🧴 Higiene',             name:'Sedal',            price:4,  stock:20, img:'Sedal.png'},
+  {id:28, cat:'🍺 Bebidas Alcohólicas', name:'Huary Botella',    price:20, stock:0,  img:'Huary_Botella.webp'},
+  {id:29, cat:'🍺 Bebidas Alcohólicas', name:'Paceña Palito',    price:5,  stock:0,  img:'Paceña_Palito.png'},
 ];
 let minibarProducts = [...DEFAULT_PRODUCTS];
 
 let mbCart = {}; // { productId: qty }
 let mbRoomNum = null;
 
-function saveProducts() { api('productos', 'POST', minibarProducts); }
+// saveProducts() eliminado — el almacén/inventario es la fuente única de verdad
 
 function openMinibar(num, event) {
   event.stopPropagation();
@@ -1167,7 +1243,7 @@ function renderMbProducts() {
       const qty = mbCart[p.id] || 0;
       const oos = p.stock <= 0;
       html += `
-        <div class="mb-product${oos?' out-of-stock':''}"
+        <div class="mb-product${oos?' out-of-stock':''}" data-mbid="${p.id}"
           onclick="mbChange(${p.id},1)"
           oncontextmenu="mbChange(${p.id},-1);return false;">
           ${p.img
@@ -1192,12 +1268,22 @@ function mbChange(id, delta) {
   if (!p) return;
   const cur = mbCart[id] || 0;
   const newQty = Math.max(0, Math.min(p.stock, cur + delta));
+  if (newQty === cur) return; // no cambió
   if (newQty === 0) delete mbCart[id];
   else mbCart[id] = newQty;
   const el = document.getElementById('mbqty-'+id);
   if (el) {
     el.textContent = newQty > 0 ? newQty : '';
     el.classList.toggle('mb-qty-active', newQty > 0);
+  }
+  // Animación flash +1 / -1
+  const card = document.querySelector(`[data-mbid="${id}"]`);
+  if (card) {
+    const flash = document.createElement('div');
+    flash.className = 'mb-flash ' + (delta > 0 ? 'add' : 'sub');
+    flash.textContent = delta > 0 ? '+1' : '-1';
+    card.appendChild(flash);
+    setTimeout(() => flash.remove(), 700);
   }
   renderCart();
 }
@@ -1220,11 +1306,11 @@ function renderCart() {
   document.getElementById('cartTotal').textContent = `Bs ${total}`;
 }
 
-function confirmMinibar() {
+async function confirmMinibar() {
   if (!mbRoomNum) return;
   const items = Object.keys(mbCart).filter(k=>mbCart[k]>0).map(id => {
     const p = minibarProducts.find(p=>p.id==id);
-    return { id:p.id, name:p.name, price:p.price, qty:mbCart[id] };
+    return { id:p.id, inv_id:p.inv_id, name:p.name, price:p.price, qty:mbCart[id], cat:p.cat };
   });
 
   // Calcular diferencia respecto al estado anterior (por si se edita)
@@ -1232,28 +1318,48 @@ function confirmMinibar() {
   const prevMap = {};
   prev.forEach(i => { prevMap[i.id] = i.qty; });
 
-  // Deduct stock local y registrar ventas en inventario
-  items.forEach(i => {
-    const p = minibarProducts.find(p=>p.id===i.id);
+  const MINIBAR_CATS_LOCAL = ['🍺 Bebidas Alcohólicas','🥤 Refrescos','⚡ Energizantes'];
+
+  // Registrar ventas/devoluciones en inventario.db (sin tocar stock local)
+  for (const i of items) {
     const diff = i.qty - (prevMap[i.id] || 0);
-    if (p && diff > 0) p.stock -= diff;
+    const isMinibar = MINIBAR_CATS_LOCAL.includes(i.cat);
     if (diff > 0) {
-      api('inventario/vender', 'POST', { producto_id: i.id, cantidad: diff });
+      const endpoint = isMinibar ? 'inventario/vender' : 'inventario/vender-vitrina';
+      await api(endpoint, 'POST', { producto_id: i.id, inv_id: i.inv_id, cantidad: diff, monto: i.price * diff, metodo_pago: 'habitacion' });
     } else if (diff < 0) {
-      // Devolvió unidades — revertir en inventario
-      api('inventario/devolver', 'POST', { producto_id: i.id, cantidad: Math.abs(diff) });
+      const endpoint = isMinibar ? 'inventario/devolver' : 'inventario/devolver-vitrina';
+      await api(endpoint, 'POST', { producto_id: i.id, inv_id: i.inv_id, cantidad: Math.abs(diff) });
     }
-  });
+  }
   // Si quitó items que antes estaban, también revertir
-  prev.forEach(i => {
+  for (const i of prev) {
     if (!items.find(x=>x.id===i.id)) {
-      api('inventario/devolver', 'POST', { producto_id: i.id, cantidad: i.qty });
+      const prod = minibarProducts.find(p=>p.id===i.id);
+      const isMinibar = prod && MINIBAR_CATS_LOCAL.includes(prod.cat);
+      const endpoint = isMinibar ? 'inventario/devolver' : 'inventario/devolver-vitrina';
+      await api(endpoint, 'POST', { producto_id: i.id, inv_id: prod?.inv_id, cantidad: i.qty });
     }
-  });
+  }
 
   occupancy[mbRoomNum].minibar = items;
   saveOcc();
-  saveProducts();
+  backupToLocalStorage();
+
+  // Recargar stock fresco del inventario
+  try {
+    const freshProducts = await api('inventario/productos-minibar');
+    if (freshProducts && freshProducts.length) {
+      minibarProducts = freshProducts.map(p => {
+        if (!p.img) {
+          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id || d.name === p.name);
+          if (def) p.img = def.img;
+        }
+        return p;
+      });
+    }
+  } catch(e) { console.warn('No se pudo recargar stock:', e); }
+
   closeModal('minibarOverlay');
   render();
   const total = items.reduce((s,i)=>s+i.price*i.qty,0);
@@ -1316,7 +1422,7 @@ function quickPrint(num, event) {
 // ─── CAJA ─────────────────────────────────────────────────────────────────────
 const MINIBAR_CATS = ['🍺 Bebidas Alcohólicas','🥤 Refrescos','⚡ Energizantes'];
 
-let cajaData = { inicio: null, egresos: [] };
+let cajaData = { inicio: null, egresos: [], bebida: { stock: null, movimientos: [] }, vitrina: { stock: null, movimientos: [] } };
 function getCajaData() {
   return cajaData;
 }
@@ -1330,6 +1436,7 @@ function calcCajaTotals() {
   let totalCambios=0;
 
   entries.forEach(e => {
+    try {
     const p = e.pago;
     if (!p) {
       // entrada legacy sin pago detallado — todo cash
@@ -1343,19 +1450,21 @@ function calcCajaTotals() {
       return;
     }
     // Habitación — soporta formato nuevo (cash/qr) y legado (method)
-    if (p.hab.cash !== undefined) {
-      hab_cash += p.hab.cash; hab_qr += p.hab.qr || 0; hab_com += p.hab.comision || 0;
-    } else {
-      if (p.hab.method === 'cash') hab_cash += p.hab.monto; else { hab_qr += p.hab.monto; hab_com += p.hab.comision || 0; }
+    if (p.hab) {
+      if (p.hab.cash !== undefined) {
+        hab_cash += p.hab.cash; hab_qr += p.hab.qr || 0; hab_com += p.hab.comision || 0;
+      } else {
+        if (p.hab.method === 'cash') hab_cash += p.hab.monto; else { hab_qr += p.hab.monto; hab_com += p.hab.comision || 0; }
+      }
+      if (p.hab.cambio > 0) totalCambios += p.hab.cambio;
     }
-    if (p.hab.cambio > 0) totalCambios += p.hab.cambio;
     // Prepago — sumar al efectivo/qr de hab
     if (e.prepaid) {
       hab_cash += e.prepaid.cash || 0;
       hab_qr   += e.prepaid.qr || 0;
     }
     // Minibar
-    if (p.minibar.monto > 0) {
+    if (p.minibar && p.minibar.monto > 0) {
       if (p.minibar.cash !== undefined) {
         mb_cash += p.minibar.cash; mb_qr += p.minibar.qr || 0;
       } else {
@@ -1364,7 +1473,7 @@ function calcCajaTotals() {
       if (p.minibar.cambio > 0) totalCambios += p.minibar.cambio;
     }
     // Vitrina
-    if (p.vitrina.monto > 0) {
+    if (p.vitrina && p.vitrina.monto > 0) {
       if (p.vitrina.cash !== undefined) {
         vit_cash += p.vitrina.cash; vit_qr += p.vitrina.qr || 0;
       } else {
@@ -1372,6 +1481,7 @@ function calcCajaTotals() {
       }
       if (p.vitrina.cambio > 0) totalCambios += p.vitrina.cambio;
     }
+    } catch(err) { console.warn('calcCajaTotals: entrada con datos incompletos, saltando:', err, e); }
   });
 
   const caja = getCajaData();
@@ -1472,7 +1582,252 @@ function deleteEgreso(idx) {
 }
 
 function resetCajaForNewShift() {
-  saveCajaData({ inicio: null, egresos: [] });
+  const caja = getCajaData();
+  caja.inicio = null;
+  caja.egresos = [];
+  // NO tocar bebida ni vitrina — son acumulativos (chanchitos)
+  saveCajaData(caja);
+}
+
+// ─── CAJA TABS (Tiempo / Bebida / Vitrina) ──────────────────────────────────
+let cajaTab = 'tiempo';
+
+function setCajaTab(tab) {
+  cajaTab = tab;
+  const tabs = ['tiempo','bebida','vitrina'];
+  const colors = { tiempo: 'var(--accent)', bebida: '#d97706', vitrina: '#0891b2' };
+  tabs.forEach(t => {
+    const btn = document.getElementById('caja-tab-' + t);
+    const content = document.getElementById('caja-tab-' + t + '-content');
+    if (t === tab) {
+      btn.style.background = colors[t]; btn.style.color = '#fff'; btn.style.borderColor = colors[t];
+      content.style.display = '';
+    } else {
+      btn.style.background = 'var(--surface2)'; btn.style.color = 'var(--text2)'; btn.style.borderColor = 'var(--border)';
+      content.style.display = 'none';
+    }
+  });
+  if (tab === 'tiempo') renderCaja();
+  else renderStockTab(tab);
+}
+
+function calcStockTotals(type) {
+  const entries = currentShift.entries || [];
+  const isBebida = type === 'bebida';
+  let cash = 0, qr = 0;
+  const items = [];
+
+  entries.forEach(e => {
+    const p = e.pago;
+    if (!p) {
+      // legacy sin pago detallado
+      (e.minibar || []).forEach(item => {
+        const prod = minibarProducts.find(x => x.id === item.id);
+        const match = isBebida ? MINIBAR_CATS.includes(prod?.cat) : !MINIBAR_CATS.includes(prod?.cat);
+        if (match) {
+          cash += item.price * item.qty;
+          items.push({ name: prod?.name || item.id, qty: item.qty, total: item.price * item.qty, method: 'cash' });
+        }
+      });
+      return;
+    }
+    const key = isBebida ? 'minibar' : 'vitrina';
+    const pSection = p[key];
+    if (pSection && pSection.monto > 0) {
+      if (pSection.cash !== undefined) {
+        cash += pSection.cash; qr += pSection.qr || 0;
+      } else {
+        if (pSection.method === 'cash') cash += pSection.monto; else qr += pSection.monto;
+      }
+    }
+    // Collect individual items for the list
+    (e.minibar || []).forEach(item => {
+      const prod = minibarProducts.find(x => x.id === item.id);
+      const match = isBebida ? MINIBAR_CATS.includes(prod?.cat) : !MINIBAR_CATS.includes(prod?.cat);
+      if (match) {
+        items.push({ name: prod?.name || item.id, qty: item.qty, total: item.price * item.qty, room: e.room });
+      }
+    });
+  });
+
+  const caja = getCajaData();
+  const stockData = caja[type] || { stock: null, movimientos: [] };
+  const movimientos = stockData.movimientos || [];
+  const stock = stockData.stock || 0;
+  const totalVentasTurno = cash + qr;
+
+  // Acumulado histórico de movimientos
+  const totalVentasHist = movimientos.filter(m => m.tipo === 'venta').reduce((s, m) => s + (m.cash || 0) + (m.qr || 0), 0);
+  const totalRetirosHist = movimientos.filter(m => m.tipo === 'retiro').reduce((s, m) => s + m.monto, 0);
+  const saldo = stock + totalVentasHist + totalVentasTurno - totalRetirosHist;
+
+  return { stock, cash, qr, totalVentas: totalVentasTurno, totalVentasHist, totalRetirosHist, saldo, movimientos, items };
+}
+
+function renderStockTab(type) {
+  const t = calcStockTotals(type);
+  const caja = getCajaData();
+  const stockData = caja[type] || { stock: null, movimientos: [] };
+  const label_type = type === 'bebida' ? 'BEBIDAS' : 'VITRINA';
+
+  // Saldo actual (acumulado)
+  document.getElementById(type + '-stock-final').textContent = `Bs ${t.saldo}`;
+  document.getElementById(type + '-stock-sub').textContent = `Stock: Bs ${t.stock} + Ventas: Bs ${t.totalVentasHist + t.totalVentas} − Retiros: Bs ${t.totalRetirosHist}`;
+
+  // Stock inicial
+  const label = document.getElementById(type + '-stock-label');
+  if (stockData.stock !== null) {
+    document.getElementById(type + '-stock-val').value = stockData.stock;
+    label.textContent = `✓ Fijado en Bs ${stockData.stock}`;
+    label.style.color = 'var(--green)';
+  } else {
+    label.textContent = 'No fijado — ingresá el monto al contar el chanchito';
+    label.style.color = 'var(--text3)';
+  }
+
+  // Ventas del turno actual
+  document.getElementById(type + '-ventas-total').textContent = `Bs ${t.totalVentas}`;
+  document.getElementById(type + '-ventas-cash').textContent = `Bs ${t.cash}`;
+  document.getElementById(type + '-ventas-qr').textContent = `Bs ${t.qr}`;
+  const ventasList = document.getElementById(type + '-ventas-list');
+  if (!t.items.length) {
+    ventasList.innerHTML = '<div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px">Sin ventas aún</div>';
+  } else {
+    ventasList.innerHTML = t.items.map(i => `
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.72rem;border-bottom:1px solid var(--border)">
+        <span style="color:var(--text2)">${i.qty}× ${i.name}${i.room ? ' <span style="color:var(--text3)">(Hab.${i.room})</span>' : ''}</span>
+        <span style="font-family:'JetBrains Mono',monospace;color:var(--green)">Bs ${i.total}</span>
+      </div>`).join('');
+  }
+
+  // Historial de movimientos (ventas depositadas + retiros)
+  const histList = document.getElementById(type + '-hist-list');
+  const movs = t.movimientos.slice().reverse(); // más reciente primero
+  if (!movs.length) {
+    histList.innerHTML = '<div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px">Sin movimientos registrados</div>';
+  } else {
+    histList.innerHTML = movs.map((m, i) => {
+      const realIdx = t.movimientos.length - 1 - i;
+      if (m.tipo === 'venta') {
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:0.72rem;border-bottom:1px solid var(--border)">
+          <div style="display:flex;flex-direction:column">
+            <span style="color:var(--green)">＋ Depósito turno ${m.turno}</span>
+            <span style="font-size:0.6rem;color:var(--text3)">${m.fecha} · 💵 Bs ${m.cash || 0} · 📱 Bs ${m.qr || 0}</span>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;color:var(--green)">+Bs ${(m.cash||0)+(m.qr||0)}</span>
+        </div>`;
+      } else {
+        return `<div class="egreso-item">
+          <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+            <span style="color:var(--red)">− ${m.motivo}</span>
+            <span style="font-size:0.6rem;color:var(--text3)">${new Date(m.ts).toLocaleString('es-BO')}</span>
+          </div>
+          <span class="egreso-item-monto">−Bs ${m.monto}</span>
+          <button class="egreso-item-del" onclick="deleteMovimiento('${type}',${realIdx})" title="Eliminar">✕</button>
+        </div>`;
+      }
+    }).join('');
+  }
+
+  // Formulario retiro
+  document.getElementById(type + '-retiro-total').textContent = `Bs ${t.totalRetirosHist}`;
+}
+
+function setStockInicial(type) {
+  const val = parseInt(document.getElementById(type + '-stock-val').value) || 0;
+  const caja = getCajaData();
+  if (!caja[type]) caja[type] = { stock: null, movimientos: [] };
+  caja[type].stock = val;
+  saveCajaData(caja);
+  renderStockTab(type);
+  toast(`✓ Stock ${type}: Bs ${val}`);
+}
+
+function addRetiro(type) {
+  const motivo = document.getElementById(type + '-retiro-motivo').value.trim();
+  const monto = parseInt(document.getElementById(type + '-retiro-monto').value) || 0;
+  if (!motivo) { toast('⚠ Escribí el motivo del retiro'); return; }
+  if (!monto) { toast('⚠ Ingresá un monto válido'); return; }
+  const caja = getCajaData();
+  if (!caja[type]) caja[type] = { stock: null, movimientos: [] };
+  if (!caja[type].movimientos) caja[type].movimientos = [];
+  caja[type].movimientos.push({ tipo: 'retiro', motivo, monto, ts: Date.now() });
+  saveCajaData(caja);
+  document.getElementById(type + '-retiro-motivo').value = '';
+  document.getElementById(type + '-retiro-monto').value = '';
+  renderStockTab(type);
+  toast(`− Bs ${monto} retiro ${type}: ${motivo}`);
+}
+
+function deleteMovimiento(type, idx) {
+  const caja = getCajaData();
+  if (!caja[type] || !caja[type].movimientos) return;
+  caja[type].movimientos.splice(idx, 1);
+  saveCajaData(caja);
+  renderStockTab(type);
+}
+
+// ─── DEPOSIT POPUP (al cerrar turno) ─────────────────────────────────────────
+function showDepositPopup(bebida, vitrina, shiftType) {
+  const turnoLabel = shiftType === 'day' ? 'Día' : 'Noche';
+  const fecha = new Date().toISOString().slice(0, 10);
+
+  let html = '<div style="padding:20px;max-width:400px">';
+  html += '<h3 style="margin:0 0 16px;font-size:1.1rem;color:var(--gold)">💰 Depósito a cajas</h3>';
+
+  if (bebida.totalVentas > 0) {
+    html += `<div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="font-weight:700;font-size:0.9rem;color:var(--text)">🍺 Caja Bebidas: <span style="color:var(--green)">Bs ${bebida.totalVentas}</span></div>
+      <div style="font-size:0.72rem;color:var(--text3);margin:4px 0 8px">💵 Efectivo Bs ${bebida.cash} · 📱 QR Bs ${bebida.qr}</div>
+      <button id="dep-bebida-btn" onclick="doDeposit('bebida',${bebida.cash},${bebida.qr},'${turnoLabel}','${fecha}')"
+        style="width:100%;padding:10px;background:#d97706;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:0.82rem;cursor:pointer">
+        Depositar a Caja Bebidas
+      </button>
+    </div>`;
+  }
+
+  if (vitrina.totalVentas > 0) {
+    html += `<div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="font-weight:700;font-size:0.9rem;color:var(--text)">🏪 Caja Vitrina: <span style="color:var(--green)">Bs ${vitrina.totalVentas}</span></div>
+      <div style="font-size:0.72rem;color:var(--text3);margin:4px 0 8px">💵 Efectivo Bs ${vitrina.cash} · 📱 QR Bs ${vitrina.qr}</div>
+      <button id="dep-vitrina-btn" onclick="doDeposit('vitrina',${vitrina.cash},${vitrina.qr},'${turnoLabel}','${fecha}')"
+        style="width:100%;padding:10px;background:#0891b2;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:0.82rem;cursor:pointer">
+        Depositar a Caja Vitrina
+      </button>
+    </div>`;
+  }
+
+  html += `<button onclick="closeModal('depositOverlay')" style="width:100%;padding:10px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:6px;font-size:0.8rem;cursor:pointer;margin-top:4px">Cerrar sin depositar</button>`;
+  html += '</div>';
+
+  // Create overlay
+  let overlay = document.getElementById('depositOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'depositOverlay';
+    overlay.className = 'overlay';
+    overlay.innerHTML = '<div class="modal" style="width:auto;max-width:440px"><div id="depositContent"></div></div>';
+    document.body.appendChild(overlay);
+  }
+  document.getElementById('depositContent').innerHTML = html;
+  overlay.classList.add('active');
+}
+
+function doDeposit(type, cash, qr, turnoLabel, fecha) {
+  const caja = getCajaData();
+  if (!caja[type]) caja[type] = { stock: null, movimientos: [] };
+  if (!caja[type].movimientos) caja[type].movimientos = [];
+  caja[type].movimientos.push({ tipo: 'venta', turno: turnoLabel, fecha, cash, qr, ts: Date.now() });
+  saveCajaData(caja);
+
+  const btn = document.getElementById('dep-' + type + '-btn');
+  if (btn) {
+    btn.textContent = '✓ Depositado';
+    btn.disabled = true;
+    btn.style.background = 'var(--green)';
+    btn.style.opacity = '0.7';
+  }
+  toast(`✓ Bs ${cash + qr} depositado a caja ${type}`);
 }
 
 // ─── RECORDS SYSTEM ───────────────────────────────────────────────────────────
@@ -1481,6 +1836,14 @@ let allDays = {};
 
 function todayKey() {
   const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function operativeDateKey(timestamp) {
+  const d = new Date(timestamp || Date.now());
+  if (d.getHours() < 6) {
+    d.setDate(d.getDate() - 1);
+  }
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
@@ -1493,7 +1856,7 @@ function saveDays() {
 
 // Llamar al cerrar turno para guardar en el registro diario
 function archiveShiftToDay(shift) {
-  const key = todayKey();
+  const key = operativeDateKey(shift.start);
   if (!allDays[key]) allDays[key] = [];
   allDays[key].push(shift);
   purgePruneOldDays();
@@ -1510,7 +1873,6 @@ function purgePruneOldDays() {
   // Exportar días viejos automáticamente
   while (keys.length > keep) {
     const oldKey = keys.shift();
-    exportDayToFile(oldKey, allDays[oldKey]);
     delete allDays[oldKey];
   }
 }
@@ -1608,7 +1970,7 @@ function renderRecords() {
             <span class="rec-entry-total">Bs ${e.total}</span>
           </div>
           <div class="rec-entry-row"><span>${e.type} · ${e.guest}</span><span>${dur}</span></div>
-          <div class="rec-entry-row"><span>Entrada: ${formatTime(e.checkin)}</span><span>Salida: ${formatTime(e.checkout)}</span></div>
+          <div class="rec-entry-row"><span>Entrada: ${formatTime(e.checkin)}</span><span>${e.checkout ? 'Salida: '+formatTime(e.checkout) : e.shiftPrepay ? '💰 Prepago cierre' : 'En curso'}</span></div>
           <div class="rec-entry-row"><span>${e.breakdown||'Noche completa'}</span></div>
           ${mb.length ? `<div class="rec-entry-minibar">🛒 ${mb.map(i=>`${i.name} ×${i.qty}`).join(', ')} — Bs ${mbTotal}</div>` : ''}
         </div>`;
@@ -1625,15 +1987,78 @@ function toggleRecShift(id) {
   if (el) el.classList.toggle('open');
 }
 function openShiftClose() {
+  try {
   const entries = currentShift.entries || [];
   const occupiedRooms = Object.keys(occupancy);
 
+  const typeNames = { ac:'Aire Acond.', fan:'Ventilador', fan2:'Ventilador', simple:'Simple' };
+  const activeRooms = occupiedRooms.filter(n => !occupancy[n].cleaning);
+
   const warnEl = document.getElementById('shiftWarn');
-  if (occupiedRooms.length > 0) {
+  const occStep = document.getElementById('shiftOccupiedStep');
+  if (activeRooms.length > 0) {
     warnEl.style.display = 'block';
-    document.getElementById('shiftWarnCount').textContent = occupiedRooms.length;
+    document.getElementById('shiftWarnCount').textContent = activeRooms.length;
+
+    // Generar tarjetas de habitaciones ocupadas
+    window._shiftPrepayments = {};
+    const listEl = document.getElementById('shiftOccupiedList');
+    listEl.innerHTML = activeRooms.map(num => {
+      const occ = occupancy[num];
+      const roomDef = ROOM_DEFS.find(r => r.num == num);
+      const bill = roomDef ? calcBill(roomDef, occ.checkin, Date.now()) : { total: 0 };
+      const elapsed = Date.now() - occ.checkin;
+      const alreadyPrepaid = !!occ.prepaid;
+      window._shiftPrepayments[num] = { paid: alreadyPrepaid, amount: bill.total, cash: bill.total, qr: 0 };
+
+      return `
+        <div class="shift-occ-card" id="soc-${num}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div style="display:flex;align-items:center;gap:10px;flex:1">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:800;color:var(--gold);min-width:32px">${num}</div>
+              <div>
+                <div style="font-size:0.75rem;font-weight:600;color:var(--text1)">${occ.guest || 'Sin nombre'}</div>
+                <div style="font-size:0.6rem;color:var(--text3)">${roomDef ? typeNames[roomDef.type] : ''} · ${formatDuration(elapsed)} · Bs ${bill.total}</div>
+              </div>
+            </div>
+            ${alreadyPrepaid ? `
+              <div style="font-size:0.65rem;color:var(--green);font-weight:700;padding:4px 10px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:6px">💰 Prepago Bs ${occ.prepaid.amount}</div>
+            ` : `
+              <div style="display:flex;gap:4px">
+                <button class="soc-toggle" id="soc-btn-no-${num}" onclick="toggleShiftPrepay(${num},false)" style="padding:4px 10px;font-size:0.65rem;border-radius:6px;cursor:pointer;font-weight:700;border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.15);color:#f87171;transition:all 0.2s">No pagó</button>
+                <button class="soc-toggle" id="soc-btn-yes-${num}" onclick="toggleShiftPrepay(${num},true)" style="padding:4px 10px;font-size:0.65rem;border-radius:6px;cursor:pointer;font-weight:700;border:1px solid rgba(34,197,94,0.3);background:transparent;color:var(--text3);transition:all 0.2s">Pagó</button>
+              </div>
+            `}
+          </div>
+          ${alreadyPrepaid ? '' : `
+            <div id="soc-pay-${num}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <div style="font-size:0.6rem;color:var(--text3);font-weight:600">Monto:</div>
+                <input type="number" id="soc-amount-${num}" value="${bill.total}" min="0" style="width:70px;padding:3px 6px;font-size:0.72rem;font-family:'JetBrains Mono',monospace;background:var(--bg2);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text1);text-align:center" onchange="updateShiftPrepayAmount(${num})">
+                <div style="display:flex;gap:3px;margin-left:auto">
+                  <label style="font-size:0.6rem;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:2px">
+                    <input type="radio" name="soc-method-${num}" value="cash" checked onchange="updateShiftPrepayMethod(${num},'cash')"> 💵 Efectivo
+                  </label>
+                  <label style="font-size:0.6rem;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:2px">
+                    <input type="radio" name="soc-method-${num}" value="qr" onchange="updateShiftPrepayMethod(${num},'qr')"> 📱 QR
+                  </label>
+                  <label style="font-size:0.6rem;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:2px">
+                    <input type="radio" name="soc-method-${num}" value="mix" onchange="updateShiftPrepayMethod(${num},'mix')"> Mixto
+                  </label>
+                </div>
+              </div>
+              <div id="soc-mix-${num}" style="display:none;margin-top:6px;gap:6px;align-items:center">
+                <label style="font-size:0.6rem;color:var(--green)">💵 <input type="number" id="soc-cash-${num}" value="${bill.total}" min="0" style="width:60px;padding:2px 4px;font-size:0.7rem;font-family:'JetBrains Mono',monospace;background:var(--bg2);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--green);text-align:center" onchange="updateShiftPrepayMix(${num})"></label>
+                <label style="font-size:0.6rem;color:var(--ac-color)">📱 <input type="number" id="soc-qr-${num}" value="0" min="0" style="width:60px;padding:2px 4px;font-size:0.7rem;font-family:'JetBrains Mono',monospace;background:var(--bg2);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--ac-color);text-align:center" onchange="updateShiftPrepayMix(${num})"></label>
+              </div>
+            </div>
+          `}
+        </div>`;
+    }).join('');
+    occStep.style.display = 'block';
   } else {
     warnEl.style.display = 'none';
+    occStep.style.display = 'none';
   }
 
   const isDay = currentShift.type === 'day';
@@ -1695,20 +2120,126 @@ function openShiftClose() {
         <td>${e.type}</td>
         <td>${e.guest}</td>
         <td>${formatTime(e.checkin)}</td>
-        <td>${formatTime(e.checkout)}</td>
-        <td style="font-family:\'JetBrains Mono\',monospace">${formatDuration(e.checkout-e.checkin)}</td>
+        <td>${e.checkout ? formatTime(e.checkout) : e.shiftPrepay ? '💰 Prepago' : '—'}</td>
+        <td style="font-family:\'JetBrains Mono\',monospace">${e.checkout ? formatDuration(e.checkout-e.checkin) : '—'}</td>
         <td style="font-family:\'JetBrains Mono\',monospace;color:var(--gold);font-weight:600">Bs ${e.total}</td>
       </tr>
     `).join('');
   }
 
   document.getElementById('shiftOverlay').classList.add('open');
+  } catch(err) { console.error('Error al abrir cierre de turno:', err); alert('Error al abrir cierre de turno: ' + err.message); }
+}
+
+function toggleShiftPrepay(num, paid) {
+  const sp = window._shiftPrepayments;
+  if (!sp || !sp[num]) return;
+  sp[num].paid = paid;
+  const payDiv = document.getElementById('soc-pay-' + num);
+  const btnYes = document.getElementById('soc-btn-yes-' + num);
+  const btnNo = document.getElementById('soc-btn-no-' + num);
+  if (paid) {
+    payDiv.style.display = 'block';
+    btnYes.style.background = 'rgba(34,197,94,0.2)';
+    btnYes.style.color = '#22c55e';
+    btnYes.style.borderColor = 'rgba(34,197,94,0.5)';
+    btnNo.style.background = 'transparent';
+    btnNo.style.color = 'var(--text3)';
+    btnNo.style.borderColor = 'rgba(255,255,255,0.1)';
+  } else {
+    payDiv.style.display = 'none';
+    btnNo.style.background = 'rgba(239,68,68,0.15)';
+    btnNo.style.color = '#f87171';
+    btnNo.style.borderColor = 'rgba(239,68,68,0.4)';
+    btnYes.style.background = 'transparent';
+    btnYes.style.color = 'var(--text3)';
+    btnYes.style.borderColor = 'rgba(34,197,94,0.3)';
+  }
+}
+
+function updateShiftPrepayAmount(num) {
+  const sp = window._shiftPrepayments;
+  if (!sp || !sp[num]) return;
+  const amount = parseInt(document.getElementById('soc-amount-' + num).value) || 0;
+  sp[num].amount = amount;
+  sp[num].cash = amount;
+  sp[num].qr = 0;
+  // Reset to cash
+  const cashRadio = document.querySelector('input[name="soc-method-' + num + '"][value="cash"]');
+  if (cashRadio) cashRadio.checked = true;
+  const mixDiv = document.getElementById('soc-mix-' + num);
+  if (mixDiv) mixDiv.style.display = 'none';
+}
+
+function updateShiftPrepayMethod(num, method) {
+  const sp = window._shiftPrepayments;
+  if (!sp || !sp[num]) return;
+  const amount = parseInt(document.getElementById('soc-amount-' + num).value) || 0;
+  const mixDiv = document.getElementById('soc-mix-' + num);
+  if (method === 'cash') {
+    sp[num].cash = amount; sp[num].qr = 0;
+    mixDiv.style.display = 'none';
+  } else if (method === 'qr') {
+    sp[num].cash = 0; sp[num].qr = amount;
+    mixDiv.style.display = 'none';
+  } else {
+    mixDiv.style.display = 'flex';
+    document.getElementById('soc-cash-' + num).value = amount;
+    document.getElementById('soc-qr-' + num).value = 0;
+    sp[num].cash = amount; sp[num].qr = 0;
+  }
+}
+
+function updateShiftPrepayMix(num) {
+  const sp = window._shiftPrepayments;
+  if (!sp || !sp[num]) return;
+  sp[num].cash = parseInt(document.getElementById('soc-cash-' + num).value) || 0;
+  sp[num].qr = parseInt(document.getElementById('soc-qr-' + num).value) || 0;
+  sp[num].amount = sp[num].cash + sp[num].qr;
 }
 
 function confirmShiftClose() {
   // Contar habitaciones que pasan al siguiente turno (NO se les fuerza checkout)
   const occupiedCount = Object.keys(occupancy).filter(n => !occupancy[n].cleaning).length;
   const closingNight  = currentShift.type === 'night';
+  const typeNames = { ac:'Aire Acond.', fan:'Ventilador', fan2:'Ventilador', simple:'Simple' };
+
+  // Procesar prepagos de habitaciones ocupadas
+  const sp = window._shiftPrepayments || {};
+  Object.keys(sp).forEach(num => {
+    const p = sp[num];
+    if (!p.paid || p.amount <= 0) return;
+    const occ = occupancy[num];
+    if (!occ || occ.cleaning) return;
+
+    // Calcular horas transcurridas para registrar en prepaid
+    const elapsed = Date.now() - occ.checkin;
+    const hours = Math.max(1, Math.ceil(elapsed / 3600000));
+    const roomDef = ROOM_DEFS.find(r => r.num == num);
+
+    // Registrar prepago en occupancy para que el checkout lo descuente
+    occ.prepaid = { hours, amount: p.amount, cash: p.cash, qr: p.qr };
+
+    // Crear entry en el turno actual
+    currentShift.entries = currentShift.entries || [];
+    currentShift.entries.push({
+      roomNum: parseInt(num),
+      type: roomDef ? typeNames[roomDef.type] : 'Hab.',
+      guest: occ.guest || '',
+      checkin: occ.checkin,
+      checkout: null,
+      mode: occ.mode || 'hour',
+      total: p.amount,
+      prepaid: { hours, amount: p.amount, cash: p.cash, qr: p.qr },
+      pago: {
+        hab: { monto: p.amount, cash: p.cash, qr: p.qr, comision: 0, cambio: 0, prepaid: p.amount },
+        minibar: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0 },
+        vitrina: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0 },
+      },
+      shiftPrepay: true  // marca especial para identificar estos registros
+    });
+  });
+  window._shiftPrepayments = null;
 
   currentShift.end = Date.now();
   currentShift.total = (currentShift.entries||[]).reduce((s,e)=>s+e.total,0);
@@ -1726,8 +2257,23 @@ function confirmShiftClose() {
   const cajaTotals = calcCajaTotals();
   archiveShiftToDay({...currentShift, caja: cajaTotals});
 
+  // Calcular ventas de bebida/vitrina ANTES de resetear
+  const bebidaTotals = calcStockTotals('bebida');
+  const vitrinaTotals = calcStockTotals('vitrina');
+  const closedShiftType = currentShift.type;
+
   saveOcc(); saveHist();
   resetCajaForNewShift();
+
+  // Purgar movimientos > 7 días
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const caja = getCajaData();
+  ['bebida', 'vitrina'].forEach(tipo => {
+    if (caja[tipo] && caja[tipo].movimientos) {
+      caja[tipo].movimientos = caja[tipo].movimientos.filter(m => m.ts >= sevenDaysAgo);
+    }
+  });
+  saveCajaData(caja);
 
   // Backup automático al cerrar turno
   addLog('TURNO CERRADO', `${currentShift.type === 'day' ? 'Día' : 'Noche'} — Bs ${currentShift.total}`);
@@ -1742,9 +2288,14 @@ function confirmShiftClose() {
     : '✓ Turno cerrado. Nuevo turno iniciado.';
   toast(msg);
 
+  // Mostrar popup de depósito si hubo ventas
+  if (bebidaTotals.totalVentas > 0 || vitrinaTotals.totalVentas > 0) {
+    setTimeout(() => showDepositPopup(bebidaTotals, vitrinaTotals, closedShiftType), 500);
+  }
+
   // Si cerramos turno noche → buscar turno día y generar reporte diario
   if (closingNight) {
-    const dayShift = findMatchingDayShift();
+    const dayShift = findMatchingDayShift(closedNightShift.start);
     if (dayShift) {
       setTimeout(() => {
         if (confirm('🌅 Turno noche cerrado.\n\n¿Generar el reporte del día completo (Día + Noche)?')) {
@@ -1756,7 +2307,17 @@ function confirmShiftClose() {
 }
 
 // Busca el turno día más reciente en shifts (para emparejarlo con el noche)
-function findMatchingDayShift() {
+function findMatchingDayShift(nightShiftStart) {
+  const ts = nightShiftStart || (currentShift && currentShift.start) || Date.now();
+  const opDate = operativeDateKey(ts);
+
+  // Buscar en allDays (ya archivado)
+  const archived = allDays[opDate] || [];
+  for (let i = archived.length - 1; i >= 0; i--) {
+    if (archived[i].type === 'day') return archived[i];
+  }
+
+  // Fallback: shifts[] en RAM
   for (let i = shifts.length - 1; i >= 0; i--) {
     if (shifts[i].type === 'day') return shifts[i];
   }
@@ -1917,7 +2478,22 @@ function generateFullDayReport(dayShift, nightShift) {
   a.download = `motel23_dia-completo_${dateKey}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
-  toast(`📋 Reporte del día generado — Bs ${grandTotal} total`);
+
+  // Guardar automáticamente al disco del servidor
+  const rdDate = new Date(dayShift.start);
+  const dias = ['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO'];
+  const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const rdName = `${dias[rdDate.getDay()]} ${rdDate.getDate()} ${meses[rdDate.getMonth()]} ${rdDate.getFullYear()} RD`;
+  api('guardar-archivo', 'POST', {
+    nombre: `${rdName}.html`,
+    contenido: html
+  });
+  api('guardar-archivo', 'POST', {
+    nombre: `${rdName}.json`,
+    contenido: JSON.stringify(jsonData, null, 2)
+  });
+
+  toast(`📋 Reporte del día generado y guardado — Bs ${grandTotal} total`);
 }
 
 function printShift() {
@@ -1947,7 +2523,7 @@ function printShift() {
     <hr>
     <table>
       <thead><tr><th>Hab.</th><th>Tipo</th><th>Entrada</th><th>Salida</th><th>Total</th></tr></thead>
-      <tbody>${entries.map(e=>`<tr><td>${e.roomNum}</td><td>${e.type}</td><td>${formatTime(e.checkin)}</td><td>${formatTime(e.checkout)}</td><td>Bs ${e.total}</td></tr>`).join('')}</tbody>
+      <tbody>${entries.map(e=>`<tr><td>${e.roomNum}</td><td>${e.type}</td><td>${formatTime(e.checkin)}</td><td>${e.checkout ? formatTime(e.checkout) : e.shiftPrepay ? '💰 Prepago' : '—'}</td><td>Bs ${e.total}</td></tr>`).join('')}</tbody>
     </table>
     <hr>
     <div style="text-align:center;font-size:10px;color:#999;margin-top:8px">Impreso: ${new Date().toLocaleString('es-BO')}</div>
@@ -2425,7 +3001,7 @@ function generateConsolidatedReport() {
   // Agregar turno actual si tiene entries
   if (currentShift && (currentShift.entries || []).length > 0) {
     allEntries.push(...currentShift.entries);
-    const tk = todayKey();
+    const tk = operativeDateKey(currentShift.start);
     if (!report.porDia[tk]) report.porDia[tk] = { turnos: 0, checkouts: 0, total: 0 };
     report.porDia[tk].checkouts += currentShift.entries.length;
     report.porDia[tk].total += currentShift.entries.reduce((s, e) => s + e.total, 0);
@@ -2596,7 +3172,7 @@ function generateDailyPrintReport() {
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Reporte Diario - Motel 23 - ${todayKey()}</title>
+<title>Reporte Diario - Motel 23 - ${operativeDateKey(Date.now())}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: Arial, sans-serif; font-size:11px; color:#222; padding:20px; }
@@ -2703,7 +3279,7 @@ async function initApp() {
       api('historial'),
       api('turno'),
       api('turnos'),
-      api('productos'),
+      api('inventario/productos-minibar'),
       api('caja'),
       api('dias'),
       api('activitylog'),
@@ -2719,23 +3295,42 @@ async function initApp() {
     if (turnoData) currentShift = turnoData;
     if (turnosData && turnosData.length) shifts = turnosData;
     if (prodData && prodData.length) {
-      // Enriquecer con imágenes del DEFAULT si faltan
-      let needsSave = false;
+      // Productos del inventario — enriquecer con imágenes del DEFAULT
       minibarProducts = prodData.map(p => {
         if (!p.img) {
-          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id);
-          if (def) { p.img = def.img; needsSave = true; }
+          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id || d.name === p.name);
+          if (def) p.img = def.img;
         }
         return p;
       });
-      if (needsSave) saveProducts();
     }
     if (cajaRes) cajaData = cajaRes;
+    // Migrar retiros legacy a movimientos
+    ['bebida','vitrina'].forEach(t => {
+      if (cajaData[t]) {
+        if (!cajaData[t].movimientos) cajaData[t].movimientos = [];
+        if (cajaData[t].retiros && cajaData[t].retiros.length) {
+          cajaData[t].retiros.forEach(r => cajaData[t].movimientos.push({ tipo:'retiro', motivo:r.motivo, monto:r.monto, ts:r.ts }));
+          delete cajaData[t].retiros;
+          saveCajaData(cajaData);
+        }
+      }
+    });
     if (diasData && Object.keys(diasData).length) allDays = diasData;
     if (logData && logData.length) activityLog = logData;
 
   } catch(e) {
-    console.warn('⚠ No se pudo conectar al servidor, usando datos por defecto', e);
+    console.warn('⚠ No se pudo conectar al servidor, intentando localStorage...', e);
+    // Restaurar desde localStorage si el servidor no responde
+    try {
+      const backup = JSON.parse(localStorage.getItem('motel23_backup') || '{}');
+      if (backup.currentShift) currentShift = backup.currentShift;
+      if (backup.occupancy && Object.keys(backup.occupancy).length) occupancy = backup.occupancy;
+      if (backup.cajaData) cajaData = backup.cajaData;
+      if (backup.history && backup.history.length) history = backup.history;
+      if (backup.shifts && backup.shifts.length) shifts = backup.shifts;
+      console.log('✓ Datos restaurados desde localStorage');
+    } catch(e2) { console.warn('No se pudo restaurar desde localStorage', e2); }
   }
 
   // Init shift if none active
@@ -2745,19 +3340,51 @@ async function initApp() {
   saveDays();
   saveHist();
   render();
+
+  console.log('✓ Respaldo localStorage activo en cada check-in y minibar');
 }
 
-// ─── INVENTARIO (ADMIN) ──────────────────────────────────────────────────────
-let inventarioData = [];
+// ─── INVENTARIO + VITRINA ────────────────────────────────────────────────────
 
-async function renderInventario() {
-  inventarioData = await api('inventario');
-  renderInvSelectores();
-  renderInvTabla();
+// Funciones públicas de balance (llamables desde el sistema principal)
+function inv_getMinbarBalance() {
+  return (currentShift.entries || []).reduce((t, e) => {
+    const p = e.pago;
+    if (!p) {
+      const mbT = (e.minibar||[]).reduce((s,i)=>{
+        const prod = minibarProducts.find(x=>x.id===i.id);
+        return s + (MINIBAR_CATS.includes(prod?.cat) ? i.price*i.qty : 0);
+      },0);
+      return t + mbT;
+    }
+    return t + (p.minibar?.monto || 0);
+  }, 0);
 }
 
-function renderInvSelectores() {
-  // Para cargar, mostrar todos los productos del minibar
+function inv_getVitrineBalance() {
+  return (currentShift.entries || []).reduce((t, e) => {
+    const p = e.pago;
+    if (!p) {
+      const vitT = (e.minibar||[]).reduce((s,i)=>{
+        const prod = minibarProducts.find(x=>x.id===i.id);
+        return s + (!MINIBAR_CATS.includes(prod?.cat) ? i.price*i.qty : 0);
+      },0);
+      return t + vitT;
+    }
+    return t + (p.vitrina?.monto || 0);
+  }, 0);
+}
+
+let inv_data = [];
+
+async function inv_render() {
+  inv_data = await api('inventario');
+  inv_renderSelectores();
+  inv_renderTabla();
+}
+const renderInventario = inv_render; // alias para compatibilidad
+
+function inv_renderSelectores() {
   const optsCargar = minibarProducts.map(p =>
     `<option value="${p.id}" data-precio="${p.price}">${p.name} — Bs ${p.price}</option>`
   ).join('');
@@ -2765,25 +3392,27 @@ function renderInvSelectores() {
   const selCargar = document.getElementById('inv-select-prod');
   const selMover  = document.getElementById('inv-select-mover');
   if (selCargar) selCargar.innerHTML = optsCargar;
-  if (selMover)  selMover.innerHTML  = inventarioData.length ? inventarioData.map(p =>
+  if (selMover)  selMover.innerHTML  = inv_data.length ? inv_data.filter(p => p.almacen > 0).map(p =>
     `<option value="${p.producto_id}">${p.nombre} (almacén: ${p.almacen})</option>`
   ).join('') : '<option value="">— Sin stock en almacén —</option>';
 }
 
-function renderInvTabla() {
+function inv_renderTabla() {
   const el = document.getElementById('inv-tabla');
   if (!el) return;
-  if (!inventarioData.length) {
+  if (!inv_data.length) {
     el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:12px 0">Sin datos de inventario</div>';
     return;
   }
-  const rows = inventarioData.map(p => {
+  const rows = inv_data.map(p => {
     const esperado = p.vendido * p.precio;
-    const alerta = p.nevera <= 2 ? ' style="color:var(--red)"' : '';
+    const alertaN = p.nevera <= 2 && p.nevera > 0 ? ' style="color:var(--red)"' : '';
+    const alertaV = (p.vitrina || 0) <= 2 && (p.vitrina || 0) > 0 ? ' style="color:var(--red)"' : '';
     return `<tr>
       <td style="padding:4px 6px">${p.nombre}</td>
       <td style="padding:4px 6px;text-align:center">${p.almacen}</td>
-      <td style="padding:4px 6px;text-align:center"${alerta}>${p.nevera}</td>
+      <td style="padding:4px 6px;text-align:center"${alertaN}>${p.nevera}</td>
+      <td style="padding:4px 6px;text-align:center"${alertaV}>${p.vitrina || 0}</td>
       <td style="padding:4px 6px;text-align:center">${p.vendido}</td>
       <td style="padding:4px 6px;text-align:right">Bs ${esperado}</td>
     </tr>`;
@@ -2795,6 +3424,7 @@ function renderInvTabla() {
           <th style="padding:4px 6px;text-align:left">Producto</th>
           <th style="padding:4px 6px">Almacén</th>
           <th style="padding:4px 6px">Nevera</th>
+          <th style="padding:4px 6px">Vitrina</th>
           <th style="padding:4px 6px">Vendido</th>
           <th style="padding:4px 6px;text-align:right">Esperado</th>
         </tr>
@@ -2802,12 +3432,13 @@ function renderInvTabla() {
       <tbody>${rows}</tbody>
     </table>`;
 }
+const renderInvTabla = inv_renderTabla;
 
-async function invCargar() {
+async function inv_cargar() {
   const sel = document.getElementById('inv-select-prod');
   const cantEl = document.getElementById('inv-cantidad');
   const cantidad = parseInt(cantEl.value);
-  if (!sel.value || !cantidad || cantidad <= 0) { toast('⚠ Seleccioná producto y cantidad'); return; }
+  if (!sel.value || !cantidad || cantidad <= 0) { toast('Selecciona producto y cantidad'); return; }
 
   const prod = minibarProducts.find(p => p.id == sel.value);
   if (!prod) return;
@@ -2820,25 +3451,380 @@ async function invCargar() {
   });
   if (res.ok) {
     cantEl.value = '';
-    toast(`✓ ${cantidad} ${prod.name} cargados al almacén`);
-    renderInventario();
+    toast(`${cantidad} ${prod.name} cargados al almacén`);
+    inv_render();
   }
 }
+const invCargar = inv_cargar;
 
-async function invMover() {
+async function inv_mover() {
   const sel = document.getElementById('inv-select-mover');
   const cantEl = document.getElementById('inv-mover-cantidad');
+  const destino = document.querySelector('input[name="inv-destino"]:checked')?.value || 'nevera';
   const cantidad = parseInt(cantEl.value);
-  if (!sel.value || !cantidad || cantidad <= 0) { toast('⚠ Seleccioná producto y cantidad'); return; }
+  if (!sel.value || !cantidad || cantidad <= 0) { toast('Selecciona producto y cantidad'); return; }
 
-  const res = await api('inventario/mover', 'POST', { producto_id: parseInt(sel.value), cantidad });
+  const endpoint = destino === 'vitrina' ? 'inventario/mover-vitrina' : 'inventario/mover';
+  const res = await api(endpoint, 'POST', { producto_id: parseInt(sel.value), cantidad });
   if (res.ok) {
     cantEl.value = '';
-    const prod = inventarioData.find(p => p.producto_id == sel.value);
-    toast(`✓ ${cantidad} ${prod?.nombre || ''} movidos a nevera`);
-    renderInventario();
+    const prod = inv_data.find(p => p.producto_id == sel.value);
+    toast(`${cantidad} ${prod?.nombre || ''} movidos a ${destino}`);
+    inv_render();
   } else if (res.error) {
-    toast('❌ ' + res.error);
+    toast(res.error);
+  }
+}
+const invMover = inv_mover;
+
+// ─── CONSUMO PERSONAL ───────────────────────────────────────────────────────
+let personalCart = {};
+let personalMode = 'personal'; // 'personal' = precio-1, 'vip' = gratis
+
+function setPersonalMode(mode) {
+  personalMode = mode;
+  personalCart = {};
+  const btnPersonal = document.getElementById('personal-mode-personal');
+  const btnVip = document.getElementById('personal-mode-vip');
+  const desc = document.getElementById('personal-mode-desc');
+  if (mode === 'personal') {
+    btnPersonal.style.background = 'var(--accent)'; btnPersonal.style.color = '#fff'; btnPersonal.style.borderColor = 'var(--accent)';
+    btnVip.style.background = 'var(--surface2)'; btnVip.style.color = 'var(--text2)'; btnVip.style.borderColor = 'var(--border)';
+    desc.textContent = 'Precio con Bs 1 de descuento';
+  } else {
+    btnVip.style.background = '#eab308'; btnVip.style.color = '#000'; btnVip.style.borderColor = '#eab308';
+    btnPersonal.style.background = 'var(--surface2)'; btnPersonal.style.color = 'var(--text2)'; btnPersonal.style.borderColor = 'var(--border)';
+    desc.textContent = 'Sin cobro — solo registro';
+  }
+  renderPersonalPanel();
+}
+
+function renderPersonalPanel() {
+  const panel = document.getElementById('personal-productos');
+  if (!panel) return;
+
+  const cats = {};
+  minibarProducts.forEach(p => {
+    if (!cats[p.cat]) cats[p.cat] = [];
+    cats[p.cat].push(p);
+  });
+
+  let html = '';
+  Object.entries(cats).forEach(([cat, prods]) => {
+    html += `<div style="font-size:0.7rem;color:var(--text3);margin:8px 0 4px;font-weight:600">${cat}</div>`;
+    prods.forEach(p => {
+      const qty = personalCart[p.id] || 0;
+      const precioPersonal = personalMode === 'vip' ? 0 : Math.max(0, p.price - 1);
+      const priceLabel = personalMode === 'vip'
+        ? `<span style="font-size:0.65rem;color:#eab308;margin-left:4px">GRATIS</span><span style="font-size:0.55rem;color:var(--text3);text-decoration:line-through;margin-left:2px">Bs ${p.price}</span>`
+        : `<span style="font-size:0.65rem;color:var(--accent);margin-left:4px">Bs ${precioPersonal}</span><span style="font-size:0.55rem;color:var(--text3);text-decoration:line-through;margin-left:2px">Bs ${p.price}</span>`;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1">
+          <span style="font-size:0.8rem">${p.name}</span>
+          ${priceLabel}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button onclick="personalChange(${p.id},-1)" style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:0.75rem">−</button>
+          <span style="min-width:18px;text-align:center;font-weight:600;font-size:0.85rem">${qty}</span>
+          <button onclick="personalChange(${p.id},1)" style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:0.75rem">+</button>
+        </div>
+      </div>`;
+    });
+  });
+
+  panel.innerHTML = html;
+  renderPersonalTotal();
+}
+
+function personalChange(id, delta) {
+  const cur = personalCart[id] || 0;
+  const newQty = Math.max(0, cur + delta);
+  if (newQty === 0) delete personalCart[id];
+  else personalCart[id] = newQty;
+  renderPersonalPanel();
+}
+
+function renderPersonalTotal() {
+  const el = document.getElementById('personal-total');
+  if (!el) return;
+  let total = 0;
+  Object.entries(personalCart).forEach(([id, qty]) => {
+    const prod = minibarProducts.find(p => p.id == id);
+    if (prod) {
+      const precio = personalMode === 'vip' ? 0 : Math.max(0, prod.price - 1);
+      total += precio * qty;
+    }
+  });
+  el.textContent = personalMode === 'vip' ? 'Bs 0 (registro)' : `Bs ${total}`;
+  const btn = document.getElementById('personal-confirmar-btn');
+  if (btn) btn.disabled = Object.keys(personalCart).length === 0;
+}
+
+async function confirmPersonalSale() {
+  const items = Object.entries(personalCart);
+  if (!items.length) { toast('Carrito vacío'); return; }
+
+  const promptText = personalMode === 'vip' ? 'Nombre (V.I.P.):' : 'Nombre del empleado:';
+  const nombre = prompt(promptText);
+  if (!nombre || !nombre.trim()) { toast('Debe ingresar el nombre'); return; }
+
+  const NEVERA_CATS = ['🍺 Bebidas Alcohólicas','🥤 Refrescos','⚡ Energizantes'];
+  const tipoConsumo = personalMode === 'vip' ? 'consumo-vip' : 'consumo-personal';
+  const emoji = personalMode === 'vip' ? '👑' : '👷';
+  const metodoPago = personalMode === 'vip' ? 'vip' : 'efectivo';
+  let total = 0;
+  const detalles = [];
+
+  for (const [id, qty] of items) {
+    const prod = minibarProducts.find(p => p.id == id);
+    if (!prod) continue;
+    const precioPersonal = personalMode === 'vip' ? 0 : Math.max(0, prod.price - 1);
+    total += precioPersonal * qty;
+    detalles.push({ id: prod.id, inv_id: prod.inv_id, name: prod.name, price: precioPersonal, priceNormal: prod.price, qty });
+
+    // Descontar stock de nevera o vitrina según categoría
+    const isMinibar = NEVERA_CATS.includes(prod.cat);
+    const endpoint = isMinibar ? 'inventario/vender' : 'inventario/vender-vitrina';
+    await api(endpoint, 'POST', { producto_id: prod.id, inv_id: prod.inv_id, cantidad: qty, tipo_consumo: tipoConsumo, monto: precioPersonal * qty, metodo_pago: metodoPago });
+  }
+
+  // Registrar en turno
+  const entry = {
+    room: null,
+    type: tipoConsumo,
+    guest: nombre.trim(),
+    checkinTs: Date.now(),
+    checkoutTs: Date.now(),
+    bill: { time: 0, rate: 0, total: 0 },
+    minibar: [],
+    personalItems: detalles,
+    total: total,
+    pago: {
+      hab: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0 },
+      minibar: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0 },
+      personal: {
+        monto: total,
+        tipo: personalMode,
+        empleado: nombre.trim(),
+        descuento: detalles.reduce((s, d) => s + d.qty, 0),
+        cash: total,
+        qr: 0,
+        comision: 0,
+        cambio: 0
+      }
+    }
+  };
+
+  currentShift.entries.push(entry);
+  await saveShift();
+
+  // Recargar stock fresco
+  try {
+    const freshProducts = await api('inventario/productos-minibar');
+    if (freshProducts && freshProducts.length) {
+      minibarProducts = freshProducts.map(p => {
+        if (!p.img) {
+          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id || d.name === p.name);
+          if (def) p.img = def.img;
+        }
+        return p;
+      });
+    }
+  } catch(e) {}
+
+  // Limpiar
+  personalCart = {};
+  renderPersonalPanel();
+  renderCaja();
+  render();
+
+  const nombres = detalles.map(d => `${d.qty}x ${d.name}`).join(', ');
+  const montoText = personalMode === 'vip' ? 'GRATIS' : `Bs ${total}`;
+  toast(`${emoji} ${nombre}: ${nombres} — ${montoText}`);
+}
+
+// ─── VENTA DIRECTA VITRINA (legacy) ────────────────────────────────────────
+let inv_vitrinaCart = {};
+
+function inv_openVitrina() {
+  inv_vitrinaCart = {};
+  inv_renderVitrina();
+  openDrawer('vitrina', document.getElementById('rail-vitrina'));
+}
+
+function inv_renderVitrina() {
+  const panel = document.getElementById('panel-vitrina-productos');
+  if (!panel) return;
+
+  // Filtrar solo productos de vitrina (no-bebidas)
+  const vitProds = minibarProducts.filter(p => !MINIBAR_CATS.includes(p.cat));
+  const cats = [...new Set(vitProds.map(p => p.cat))];
+
+  let html = '';
+  cats.forEach(cat => {
+    const prods = vitProds.filter(p => p.cat === cat);
+    html += `<div style="font-size:0.7rem;color:var(--text3);margin:8px 0 4px;font-weight:600">${cat}</div>`;
+    prods.forEach(p => {
+      const qty = inv_vitrinaCart[p.id] || 0;
+      // Buscar stock en vitrina desde inv_data
+      const inv = inv_data.find(i => i.producto_id === p.id);
+      const stock = inv ? (inv.vitrina || 0) : 0;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1">
+          <span style="font-size:0.8rem">${p.name}</span>
+          <span style="font-size:0.65rem;color:var(--text3);margin-left:4px">Bs ${p.price} · stock: ${stock}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button onclick="inv_vitrinaChange(${p.id},-1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:0.8rem">−</button>
+          <span style="min-width:20px;text-align:center;font-weight:600">${qty}</span>
+          <button onclick="inv_vitrinaChange(${p.id},1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:0.8rem">+</button>
+        </div>
+      </div>`;
+    });
+  });
+
+  panel.innerHTML = html;
+  inv_renderVitrinaTotal();
+}
+
+function inv_vitrinaChange(id, delta) {
+  const cur = inv_vitrinaCart[id] || 0;
+  const newQty = Math.max(0, cur + delta);
+  if (newQty === 0) delete inv_vitrinaCart[id];
+  else inv_vitrinaCart[id] = newQty;
+  inv_renderVitrina();
+}
+
+function inv_renderVitrinaTotal() {
+  const el = document.getElementById('vitrina-total');
+  if (!el) return;
+  let total = 0;
+  Object.entries(inv_vitrinaCart).forEach(([id, qty]) => {
+    const prod = minibarProducts.find(p => p.id == id);
+    if (prod) total += prod.price * qty;
+  });
+  el.textContent = `Bs ${total}`;
+  const btn = document.getElementById('vitrina-confirmar-btn');
+  if (btn) btn.disabled = total === 0;
+}
+
+async function inv_confirmVitrinaSale() {
+  const items = Object.entries(inv_vitrinaCart);
+  if (!items.length) { toast('Carrito vacío'); return; }
+
+  // Determinar método de pago
+  const method = document.querySelector('input[name="vitrina-pago"]:checked')?.value || 'cash';
+
+  let total = 0;
+  const detalles = [];
+
+  for (const [id, qty] of items) {
+    const prod = minibarProducts.find(p => p.id == id);
+    if (!prod) continue;
+    const monto = prod.price * qty;
+    total += monto;
+    detalles.push({ id: prod.id, name: prod.name, price: prod.price, qty });
+
+    // Registrar venta en inventario
+    await api('inventario/vender-vitrina', 'POST', { producto_id: prod.id, cantidad: qty });
+  }
+
+  // Registrar en turno como entrada vitrina-directa
+  const entry = {
+    room: null,
+    type: 'vitrina-directa',
+    guest: null,
+    checkinTs: Date.now(),
+    checkoutTs: Date.now(),
+    bill: { time: 0, rate: 0, total: 0 },
+    minibar: [],
+    vitrinaItems: detalles,
+    total: total,
+    pago: {
+      hab: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0 },
+      minibar: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0 },
+      vitrina: {
+        monto: total,
+        cash: method === 'cash' ? total : 0,
+        qr: method === 'qr' ? total : 0,
+        comision: 0,
+        cambio: 0
+      }
+    }
+  };
+
+  currentShift.entries.push(entry);
+  await saveShift();
+
+  // Limpiar carrito
+  inv_vitrinaCart = {};
+  inv_renderVitrina();
+  inv_render();
+  renderCaja();
+  render();
+
+  const nombres = detalles.map(d => `${d.qty}x ${d.name}`).join(', ');
+  toast(`Venta vitrina: ${nombres} — Bs ${total} (${method === 'cash' ? 'efectivo' : 'QR'})`);
+}
+
+// ─── INVENTARIO / ALMACÉN (MODAL) ────────────────────────────────────────────
+function openInventario() {
+  // Crear overlay si no existe
+  let overlay = document.getElementById('inventario-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'inventario-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);opacity:0;transition:opacity 0.3s ease';
+    overlay.innerHTML = `
+      <div style="position:relative;width:94vw;height:92vh;border-radius:16px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.5);border:1px solid rgba(139,92,246,0.3)">
+        <div style="position:absolute;top:0;left:0;right:0;height:40px;background:linear-gradient(135deg,#1a1a2e,#16213e);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:2">
+          <span style="font-family:Outfit,sans-serif;font-weight:700;font-size:0.85rem;color:#a78bfa;letter-spacing:0.5px">📦 ALMACÉN / INVENTARIO</span>
+          <button onclick="closeInventario()" style="background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#f87171;border-radius:8px;padding:4px 14px;font-size:0.8rem;cursor:pointer;font-weight:700;font-family:Outfit,sans-serif;transition:all 0.2s" onmouseover="this.style.background='rgba(239,68,68,0.4)'" onmouseout="this.style.background='rgba(239,68,68,0.2)'">✕ Cerrar <span style="font-size:0.65rem;opacity:0.7;margin-left:4px">ESC</span></button>
+        </div>
+        <iframe id="inventario-iframe" src="/almacen" style="width:100%;height:100%;border:none;padding-top:40px;background:#f5f6fa"></iframe>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeInventario(); });
+  }
+  overlay.style.display = 'flex';
+  requestAnimationFrame(() => overlay.style.opacity = '1');
+  document.addEventListener('keydown', inventarioEscHandler);
+}
+
+function closeInventario() {
+  const overlay = document.getElementById('inventario-overlay');
+  if (overlay) {
+    overlay.style.opacity = '0';
+    overlay.style.pointerEvents = 'none';
+    setTimeout(() => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 300);
+  }
+  document.removeEventListener('keydown', inventarioEscHandler);
+}
+
+function inventarioEscHandler(e) {
+  if (e.key === 'Escape') closeInventario();
+}
+
+// Toggle control Click (ying/yang) en tarjeta ocupada
+function toggleClickCtrl(roomNum, type, event) {
+  event.stopPropagation();
+  const occ = occupancy[roomNum];
+  if (!occ) return;
+  if (!occ.clickControls) occ.clickControls = { ying: false, yang: false };
+  occ.clickControls[type] = !occ.clickControls[type];
+  const el = document.getElementById(type + '-' + roomNum);
+  if (!el) return;
+  if (occ.clickControls[type]) {
+    el.style.opacity = '1';
+    // Parpadeo al activar
+    el.classList.add('click-blink');
+    setTimeout(() => el.classList.remove('click-blink'), 1500);
+  } else {
+    el.style.opacity = '0.4';
+    // Parpadeo al desactivar
+    el.classList.add('click-blink');
+    setTimeout(() => el.classList.remove('click-blink'), 1500);
   }
 }
 

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= titulo %> — Inventario</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>body{background:#f5f6fa;font-family:'Segoe UI',system-ui,sans-serif}.card{border-radius:10px}.table th{font-size:.82rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px}.table td{font-size:.9rem}</style>
+</head>
+<body>
+  <%- include('../_navbar') %>
+  <main class="container-fluid py-4 px-4">
+    <h4 class="fw-bold mb-4"><i class="bi bi-arrow-down-circle me-2 text-success"></i>Entradas de Mercancía</h4>
+    <div class="row g-4">
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header fw-semibold bg-success text-white"><i class="bi bi-plus-circle me-2"></i>Registrar Entrada</div>
+          <div class="card-body">
+            <form method="post" action="<%= baseUrl %>/entradas">
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Producto <span class="text-danger">*</span></label>
+                <select name="producto_id" class="form-select" required>
+                  <option value="">Seleccionar...</option>
+                  <% productos.forEach(p => { %>
+                    <option value="<%= p.id %>"><%= p.nombre %> — Stock: <%= p.stock_actual %></option>
+                  <% }) %>
+                </select>
+              </div>
+              <!-- Cantidad de paquetes y unidades por paquete -->
+              <div class="row g-2 mb-2">
+                <div class="col">
+                  <label class="form-label fw-semibold">N° de paquetes <span class="text-danger">*</span></label>
+                  <input type="number" id="num_paquetes" class="form-control" min="1" placeholder="Ej: 2">
+                </div>
+                <div class="col">
+                  <label class="form-label fw-semibold">Unidades por paquete <span class="text-danger">*</span></label>
+                  <input type="number" id="uds_paquete" class="form-control" min="1" placeholder="Ej: 24">
+                </div>
+              </div>
+              <!-- Total unidades (informativo) -->
+              <div class="mb-3 px-1">
+                <small class="text-muted">Total unidades: </small>
+                <strong id="total_uds" class="text-success">—</strong>
+              </div>
+
+              <!-- Precio por paquete y precio unitario calculado -->
+              <div class="row g-2 mb-3">
+                <div class="col">
+                  <label class="form-label fw-semibold">Precio por paquete</label>
+                  <div class="input-group"><span class="input-group-text">Bs</span>
+                  <input type="number" id="precio_paquete" class="form-control" step="0.01" min="0" value="0"></div>
+                </div>
+                <div class="col">
+                  <label class="form-label fw-semibold text-muted">Precio unitario</label>
+                  <div class="input-group"><span class="input-group-text">Bs</span>
+                  <input type="text" id="precio_unit_display" class="form-control bg-light" readonly placeholder="—"></div>
+                </div>
+              </div>
+
+              <!-- Campos ocultos enviados al servidor -->
+              <input type="hidden" name="cantidad" id="campo_cantidad">
+              <input type="hidden" name="precio_unitario" id="campo_precio_unitario">
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Fecha</label>
+                <input type="date" name="fecha" class="form-control" value="<%= new Date().toISOString().split('T')[0] %>">
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Notas</label>
+                <textarea name="notas" class="form-control" rows="2" placeholder="Opcional..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-success w-100"><i class="bi bi-check-lg me-1"></i>Registrar Entrada</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-clock-history me-2"></i>Historial</span>
+            <form method="get" class="d-flex gap-2">
+              <input type="date" name="desde" class="form-control form-control-sm" value="<%= desde || '' %>">
+              <input type="date" name="hasta" class="form-control form-control-sm" value="<%= hasta || '' %>">
+              <button class="btn btn-sm btn-outline-secondary">Filtrar</button>
+              <a href="<%= baseUrl %>/entradas" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x"></i></a>
+            </form>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light"><tr><th>Fecha</th><th>Producto</th><th class="text-center">Cantidad</th><th class="text-end">Precio U.</th><th>Notas</th></tr></thead>
+                <tbody>
+                  <% if (entradas.length === 0) { %>
+                    <tr><td colspan="6" class="text-center text-muted py-5">Sin registros</td></tr>
+                  <% } %>
+                  <% entradas.forEach(e => { %>
+                    <tr>
+                      <td class="text-muted small"><%= e.fecha %></td>
+                      <td><span class="fw-semibold"><%= e.producto %></span></td>
+                      <td class="text-center"><span class="badge bg-success fs-6"><%= e.cantidad %></span></td>
+                      <td class="text-end">Bs <%= e.precio_unitario.toFixed(2) %></td>
+                      <td class="text-muted small"><%= e.notas || '' %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const numPaquetes   = document.getElementById('num_paquetes');
+    const udsPaquete    = document.getElementById('uds_paquete');
+    const precioPaquete = document.getElementById('precio_paquete');
+    const totalUdsEl    = document.getElementById('total_uds');
+    const precioUnitEl  = document.getElementById('precio_unit_display');
+    const campoCantidad = document.getElementById('campo_cantidad');
+    const campoPU       = document.getElementById('campo_precio_unitario');
+
+    function calcular() {
+      const np  = parseInt(numPaquetes.value)   || 0;
+      const upq = parseInt(udsPaquete.value)    || 0;
+      const pp  = parseFloat(precioPaquete.value) || 0;
+      const total = np * upq;
+      const pu    = upq > 0 ? pp / upq : 0;
+
+      totalUdsEl.textContent     = total > 0 ? total + ' unidades' : '—';
+      precioUnitEl.value         = upq > 0 ? pu.toFixed(2) : '';
+      campoCantidad.value        = total || '';
+      campoPU.value              = pu.toFixed(2);
+    }
+
+    numPaquetes.addEventListener('input', calcular);
+    udsPaquete.addEventListener('input', calcular);
+    precioPaquete.addEventListener('input', calcular);
+
+    document.querySelector('form[method="post"]').addEventListener('submit', e => {
+      if (!campoCantidad.value || parseInt(campoCantidad.value) <= 0) {
+        e.preventDefault();
+        alert('Ingresa la cantidad de paquetes y unidades por paquete.');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -5,6 +5,7 @@ const fs = require('fs');
 
 const app = express();
 const db = new Database('motel23.db');
+const invDb = require('./inventario/db'); // BD del almacén/inventario
 
 app.use(express.json());
 
@@ -63,6 +64,7 @@ db.exec(`
     precio      REAL NOT NULL,
     almacen     INTEGER NOT NULL DEFAULT 0,
     nevera      INTEGER NOT NULL DEFAULT 0,
+    vitrina     INTEGER NOT NULL DEFAULT 0,
     vendido     INTEGER NOT NULL DEFAULT 0
   );
 
@@ -75,6 +77,16 @@ db.exec(`
     nota       TEXT
   );
 `);
+
+// Migración: agregar columna vitrina si no existe (DBs creadas antes de este cambio)
+try { db.prepare('SELECT vitrina FROM inventario LIMIT 1').get(); }
+catch(e) { db.exec('ALTER TABLE inventario ADD COLUMN vitrina INTEGER NOT NULL DEFAULT 0'); }
+
+// Migración: agregar columnas monto y metodo_pago a mov_inventario
+try { db.prepare('SELECT monto FROM mov_inventario LIMIT 1').get(); }
+catch(e) { db.exec('ALTER TABLE mov_inventario ADD COLUMN monto REAL DEFAULT 0'); }
+try { db.prepare('SELECT metodo_pago FROM mov_inventario LIMIT 1').get(); }
+catch(e) { db.exec('ALTER TABLE mov_inventario ADD COLUMN metodo_pago TEXT'); }
 
 // ─── OCUPACION ────────────────────────────────────────────────────────────────
 app.get('/api/ocupacion', (req, res) => {
@@ -243,8 +255,8 @@ app.post('/api/inventario/cargar', (req, res) => {
     return res.status(400).json({ error: 'Datos inválidos' });
 
   db.prepare(`
-    INSERT INTO inventario (producto_id, nombre, precio, almacen, nevera, vendido)
-    VALUES (?, ?, ?, ?, 0, 0)
+    INSERT INTO inventario (producto_id, nombre, precio, almacen, nevera, vitrina, vendido)
+    VALUES (?, ?, ?, ?, 0, 0, 0)
     ON CONFLICT(producto_id) DO UPDATE SET
       nombre  = excluded.nombre,
       precio  = excluded.precio,
@@ -284,28 +296,72 @@ app.post('/api/inventario/mover', (req, res) => {
   res.json({ ok: true });
 });
 
+// GET: productos del inventario para el minibar (fuente única de verdad)
+app.get('/api/inventario/productos-minibar', (req, res) => {
+  try {
+    const rows = invDb.prepare(`
+      SELECT p.id, p.pms_legacy_id, c.nombre as cat, p.nombre as name,
+             p.precio_venta as price,
+             (p.stock_nevera + COALESCE(p.stock_vitrina, 0)) as stock,
+             p.stock_almacen, p.stock_nevera, COALESCE(p.stock_vitrina, 0) as stock_vitrina
+      FROM productos p
+      LEFT JOIN categorias c ON p.categoria_id = c.id
+      ORDER BY c.id, p.nombre
+    `).all();
+    // Usar pms_legacy_id como id si existe, para compatibilidad con ocupaciones guardadas
+    const result = rows.map(r => ({
+      id: r.pms_legacy_id || r.id,
+      inv_id: r.id,
+      cat: r.cat,
+      name: r.name,
+      price: r.price,
+      stock: r.stock,
+      stock_almacen: r.stock_almacen,
+      stock_nevera: r.stock_nevera,
+      stock_vitrina: r.stock_vitrina
+    }));
+    res.json(result);
+  } catch(e) {
+    console.error('Error cargando productos del inventario:', e);
+    res.status(500).json({ error: 'Error cargando inventario' });
+  }
+});
+
 // POST: registrar venta (llamado automáticamente al vender desde minibar)
 // body: { producto_id, cantidad }
 app.post('/api/inventario/vender', (req, res) => {
-  const { producto_id, cantidad } = req.body;
-  if (!producto_id || !cantidad || cantidad <= 0)
+  const { producto_id, cantidad, inv_id, tipo_consumo, monto, metodo_pago } = req.body;
+  if (!cantidad || cantidad <= 0)
     return res.status(400).json({ error: 'Datos inválidos' });
 
-  const row = db.prepare('SELECT * FROM inventario WHERE producto_id = ?').get(producto_id);
-  // Si el producto no está en inventario, ignorar silenciosamente
+  // Buscar en inventario.db por inv_id (id real) o por pms_legacy_id
+  const realId = inv_id || null;
+  let row;
+  if (realId) {
+    row = invDb.prepare('SELECT * FROM productos WHERE id = ?').get(realId);
+  }
+  if (!row && producto_id) {
+    row = invDb.prepare('SELECT * FROM productos WHERE pms_legacy_id = ?').get(producto_id);
+  }
   if (!row) return res.json({ ok: true, tracked: false });
-  if (row.nevera < cantidad)
-    return res.status(400).json({ error: `Stock insuficiente en nevera (hay ${row.nevera})` });
 
-  db.prepare(`
-    UPDATE inventario SET nevera = nevera - ?, vendido = vendido + ?
-    WHERE producto_id = ?
-  `).run(cantidad, cantidad, producto_id);
+  if (row.stock_nevera < cantidad)
+    return res.status(400).json({ error: `Stock insuficiente en nevera (hay ${row.stock_nevera})` });
 
+  invDb.prepare(`
+    UPDATE productos SET stock_nevera = stock_nevera - ?,
+      stock_actual = stock_almacen + (stock_nevera - ?) + COALESCE(stock_vitrina, 0)
+    WHERE id = ?
+  `).run(cantidad, cantidad, row.id);
+
+  // Mantener mov_inventario en motel23.db para el balance de turno
+  const tipoMov = tipo_consumo === 'consumo-vip' ? 'consumo_vip'
+    : tipo_consumo === 'consumo-personal' ? 'consumo_personal'
+    : 'venta';
   db.prepare(`
-    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad)
-    VALUES (?, ?, 'venta', ?)
-  `).run(Date.now(), producto_id, cantidad);
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad, monto, metodo_pago)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(Date.now(), producto_id || row.pms_legacy_id, tipoMov, cantidad, monto || 0, metodo_pago || null);
 
   res.json({ ok: true, tracked: true });
 });
@@ -313,22 +369,30 @@ app.post('/api/inventario/vender', (req, res) => {
 // POST: devolver unidades a nevera (cuando se edita carrito y se reduce qty)
 // body: { producto_id, cantidad }
 app.post('/api/inventario/devolver', (req, res) => {
-  const { producto_id, cantidad } = req.body;
-  if (!producto_id || !cantidad || cantidad <= 0)
+  const { producto_id, cantidad, inv_id } = req.body;
+  if (!cantidad || cantidad <= 0)
     return res.status(400).json({ error: 'Datos inválidos' });
 
-  const row = db.prepare('SELECT * FROM inventario WHERE producto_id = ?').get(producto_id);
+  const realId = inv_id || null;
+  let row;
+  if (realId) {
+    row = invDb.prepare('SELECT * FROM productos WHERE id = ?').get(realId);
+  }
+  if (!row && producto_id) {
+    row = invDb.prepare('SELECT * FROM productos WHERE pms_legacy_id = ?').get(producto_id);
+  }
   if (!row) return res.json({ ok: true, tracked: false });
 
-  db.prepare(`
-    UPDATE inventario SET nevera = nevera + ?, vendido = MAX(0, vendido - ?)
-    WHERE producto_id = ?
-  `).run(cantidad, cantidad, producto_id);
+  invDb.prepare(`
+    UPDATE productos SET stock_nevera = stock_nevera + ?,
+      stock_actual = stock_almacen + (stock_nevera + ?) + COALESCE(stock_vitrina, 0)
+    WHERE id = ?
+  `).run(cantidad, cantidad, row.id);
 
   db.prepare(`
     INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad)
     VALUES (?, ?, 'devolucion', ?)
-  `).run(Date.now(), producto_id, cantidad);
+  `).run(Date.now(), producto_id || row.pms_legacy_id, cantidad);
 
   res.json({ ok: true, tracked: true });
 });
@@ -354,8 +418,183 @@ app.get('/api/inventario/reconciliacion', (req, res) => {
   res.json(reporte);
 });
 
+// POST: mover almacén → nevera
+app.post('/api/inventario/mover-nevera', (req, res) => {
+  const { producto_id, cantidad, inv_id } = req.body;
+  if (!cantidad || cantidad <= 0)
+    return res.status(400).json({ error: 'Datos inválidos' });
+
+  const realId = inv_id || null;
+  let row;
+  if (realId) {
+    row = invDb.prepare('SELECT * FROM productos WHERE id = ?').get(realId);
+  }
+  if (!row && producto_id) {
+    row = invDb.prepare('SELECT * FROM productos WHERE pms_legacy_id = ?').get(producto_id);
+  }
+  if (!row) return res.status(404).json({ error: 'Producto no encontrado' });
+  if (row.stock_almacen < cantidad)
+    return res.status(400).json({ error: `Stock insuficiente en almacén (hay ${row.stock_almacen})` });
+
+  invDb.prepare(`
+    UPDATE productos SET stock_almacen = stock_almacen - ?,
+      stock_nevera = stock_nevera + ?
+    WHERE id = ?
+  `).run(cantidad, cantidad, row.id);
+
+  db.prepare(`
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad)
+    VALUES (?, ?, 'almacen_a_nevera', ?)
+  `).run(Date.now(), producto_id || row.pms_legacy_id, cantidad);
+
+  res.json({ ok: true });
+});
+
+// POST: mover almacén → vitrina
+app.post('/api/inventario/mover-vitrina', (req, res) => {
+  const { producto_id, cantidad, inv_id } = req.body;
+  if (!cantidad || cantidad <= 0)
+    return res.status(400).json({ error: 'Datos inválidos' });
+
+  const realId = inv_id || null;
+  let row;
+  if (realId) {
+    row = invDb.prepare('SELECT * FROM productos WHERE id = ?').get(realId);
+  }
+  if (!row && producto_id) {
+    row = invDb.prepare('SELECT * FROM productos WHERE pms_legacy_id = ?').get(producto_id);
+  }
+  if (!row) return res.status(404).json({ error: 'Producto no encontrado' });
+  if (row.stock_almacen < cantidad)
+    return res.status(400).json({ error: `Stock insuficiente en almacén (hay ${row.stock_almacen})` });
+
+  invDb.prepare(`
+    UPDATE productos SET stock_almacen = stock_almacen - ?,
+      stock_vitrina = COALESCE(stock_vitrina, 0) + ?
+    WHERE id = ?
+  `).run(cantidad, cantidad, row.id);
+
+  db.prepare(`
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad)
+    VALUES (?, ?, 'almacen_a_vitrina', ?)
+  `).run(Date.now(), producto_id || row.pms_legacy_id, cantidad);
+
+  res.json({ ok: true });
+});
+
+// POST: venta directa desde vitrina (sin habitación)
+app.post('/api/inventario/vender-vitrina', (req, res) => {
+  const { producto_id, cantidad, inv_id, tipo_consumo, monto, metodo_pago } = req.body;
+  if (!cantidad || cantidad <= 0)
+    return res.status(400).json({ error: 'Datos inválidos' });
+
+  const realId = inv_id || null;
+  let row;
+  if (realId) {
+    row = invDb.prepare('SELECT * FROM productos WHERE id = ?').get(realId);
+  }
+  if (!row && producto_id) {
+    row = invDb.prepare('SELECT * FROM productos WHERE pms_legacy_id = ?').get(producto_id);
+  }
+  if (!row) return res.json({ ok: true, tracked: false });
+
+  const vitrina = row.stock_vitrina || 0;
+  if (vitrina < cantidad)
+    return res.status(400).json({ error: `Stock insuficiente en vitrina (hay ${vitrina})` });
+
+  invDb.prepare(`
+    UPDATE productos SET stock_vitrina = COALESCE(stock_vitrina, 0) - ?,
+      stock_actual = stock_almacen + stock_nevera + (COALESCE(stock_vitrina, 0) - ?)
+    WHERE id = ?
+  `).run(cantidad, cantidad, row.id);
+
+  const tipoMov = tipo_consumo === 'consumo-vip' ? 'consumo_vip'
+    : tipo_consumo === 'consumo-personal' ? 'consumo_personal'
+    : 'venta_vitrina';
+  db.prepare(`
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad, monto, metodo_pago)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(Date.now(), producto_id || row.pms_legacy_id, tipoMov, cantidad, monto || 0, metodo_pago || null);
+
+  res.json({ ok: true, tracked: true });
+});
+
+// POST: devolver unidades a vitrina
+app.post('/api/inventario/devolver-vitrina', (req, res) => {
+  const { producto_id, cantidad, inv_id } = req.body;
+  if (!cantidad || cantidad <= 0)
+    return res.status(400).json({ error: 'Datos inválidos' });
+
+  const realId = inv_id || null;
+  let row;
+  if (realId) {
+    row = invDb.prepare('SELECT * FROM productos WHERE id = ?').get(realId);
+  }
+  if (!row && producto_id) {
+    row = invDb.prepare('SELECT * FROM productos WHERE pms_legacy_id = ?').get(producto_id);
+  }
+  if (!row) return res.json({ ok: true, tracked: false });
+
+  invDb.prepare(`
+    UPDATE productos SET stock_vitrina = COALESCE(stock_vitrina, 0) + ?,
+      stock_actual = stock_almacen + stock_nevera + (COALESCE(stock_vitrina, 0) + ?)
+    WHERE id = ?
+  `).run(cantidad, cantidad, row.id);
+
+  db.prepare(`
+    INSERT INTO mov_inventario (ts, producto_id, tipo, cantidad)
+    VALUES (?, ?, 'devolucion_vitrina', ?)
+  `).run(Date.now(), producto_id || row.pms_legacy_id, cantidad);
+
+  res.json({ ok: true, tracked: true });
+});
+
+// GET: balance minibar + vitrina desde un timestamp
+app.get('/api/inventario/balance', (req, res) => {
+  const desde = parseInt(req.query.desde) || 0;
+  const rows = db.prepare(`
+    SELECT m.tipo, m.cantidad, m.producto_id
+    FROM mov_inventario m
+    WHERE m.ts >= ? AND m.tipo IN ('venta', 'venta_vitrina')
+    ORDER BY m.ts
+  `).all(desde);
+
+  // Buscar nombres y precios en inventario.db
+  const getProduct = invDb.prepare('SELECT nombre, precio_venta FROM productos WHERE pms_legacy_id = ?');
+
+  let minibar = { total: 0, items: [] };
+  let vitrina = { total: 0, items: [] };
+
+  rows.forEach(r => {
+    const prod = getProduct.get(r.producto_id);
+    const precio = prod ? prod.precio_venta : 0;
+    const nombre = prod ? prod.nombre : `Producto ${r.producto_id}`;
+    const monto = r.cantidad * precio;
+    const item = { nombre, cantidad: r.cantidad, monto };
+    if (r.tipo === 'venta') {
+      minibar.total += monto;
+      minibar.items.push(item);
+    } else {
+      vitrina.total += monto;
+      vitrina.items.push(item);
+    }
+  });
+
+  res.json({ minibar, vitrina });
+});
+
+// ─── ALMACÉN / INVENTARIO (módulo admin, BD separada) ───────────────────────
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.use(express.urlencoded({ extended: true }));
+app.use('/almacen', require('./inventario/routes/dashboard'));
+app.use('/almacen/productos', require('./inventario/routes/productos'));
+app.use('/almacen/entradas', require('./inventario/routes/entradas'));
+app.use('/almacen/salidas', require('./inventario/routes/salidas'));
+app.use('/almacen/reportes', require('./inventario/routes/reportes'));
+
 // ─── ARCHIVOS ESTÁTICOS ──────────────────────────────────────────────────────
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── ARRANCAR SERVIDOR ────────────────────────────────────────────────────────

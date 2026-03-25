@@ -415,6 +415,7 @@ main { position:relative; z-index:1; padding:28px 28px 40px; }
 .shift-table td { padding:6px 8px; color:var(--text2); border-bottom:1px solid var(--border); }
 .shift-table tr:last-child td { border-bottom:none; }
 .shift-warn { background:rgba(251,146,60,0.1); border:1px solid rgba(251,146,60,0.3); border-radius:var(--radius-sm); padding:10px 14px; font-size:0.78rem; color:var(--orange); margin-bottom:14px; }
+.shift-occ-card { background:var(--bg2); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:10px 14px; }
 
 .room-card.cleaning::before { background: #b38f00; box-shadow:0 0 12px rgba(255,224,0,0.9) !important; }
 .room-card.cleaning .room-number { color: #1a1400; text-shadow: none; }
@@ -498,6 +499,22 @@ main { position:relative; z-index:1; padding:28px 28px 40px; }
 .mb-product:hover { transform:translateY(-2px); border-color:var(--accent); }
 .mb-product:active { transform:scale(0.97); }
 .mb-product.out-of-stock { opacity:0.3; pointer-events:none; }
+
+/* Animación +1 / -1 al agregar/quitar */
+.mb-flash {
+  position:absolute; inset:0; z-index:10;
+  display:flex; align-items:center; justify-content:center;
+  font-size:3.5rem; font-weight:900; pointer-events:none;
+  border-radius:8px;
+  animation:mbFlash 0.7s ease-out forwards;
+}
+.mb-flash.add { background:rgba(251,191,36,0.35); color:#fbbf24; text-shadow:0 0 12px rgba(251,191,36,0.8); }
+.mb-flash.sub { background:rgba(239,68,68,0.35); color:#ef4444; text-shadow:0 0 12px rgba(239,68,68,0.8); }
+@keyframes mbFlash {
+  0% { opacity:1; transform:scale(1.1); }
+  60% { opacity:0.8; transform:scale(1); }
+  100% { opacity:0; transform:translateY(-10px) scale(0.9); }
+}
 .mb-product-img {
   position:absolute; inset:0;
   width:100%; height:100%; object-fit:cover;
@@ -549,6 +566,15 @@ main { position:relative; z-index:1; padding:28px 28px 40px; }
 .btn-cart-clear:hover { border-color:var(--red); color:var(--red); }
 
 .minibar-footer { padding:14px 24px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; flex-shrink:0; }
+
+/* Click control (ying/yang) parpadeo */
+.click-blink {
+  animation: clickBlink 0.3s ease-in-out 5;
+}
+@keyframes clickBlink {
+  0%, 100% { opacity:1; filter:brightness(1); }
+  50% { opacity:0.2; filter:brightness(2); }
+}
 
 /* minibar badge on card */
 .minibar-badge {
@@ -683,8 +709,8 @@ main { position:relative; z-index:1; padding:28px 28px 40px; }
   border-radius:var(--radius-sm); padding:9px 10px;
   display:flex; align-items:center; gap:8px;
 }
-.mb-manage-name { flex:1; font-size:0.78rem; font-weight:600; color:var(--text); }
-.mb-manage-cat { font-size:0.62rem; color:var(--text3); }
+.mb-manage-name { flex:1; font-size:0.88rem; font-weight:600; color:var(--text); }
+.mb-manage-cat { font-size:0.7rem; color:var(--text3); }
 .mb-manage-price {
   font-family:'JetBrains Mono',monospace; font-size:0.78rem;
   background:var(--surface3); border:1px solid var(--border);
@@ -870,3 +896,16 @@ main { position:relative; z-index:1; padding:28px 28px 40px; }
 
 ::-webkit-scrollbar { width:4px; }
 ::-webkit-scrollbar-thumb { background:var(--border2); border-radius:4px; }
+
+/* Tarjeta Almacén */
+.almacen-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #2d1b69 50%, #1a1a2e 100%) !important;
+  border: 2px solid rgba(139,92,246,0.4) !important;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.almacen-card:hover {
+  border-color: rgba(139,92,246,0.8) !important;
+  box-shadow: 0 0 30px rgba(139,92,246,0.3), inset 0 0 30px rgba(139,92,246,0.05);
+  transform: scale(1.02);
+}

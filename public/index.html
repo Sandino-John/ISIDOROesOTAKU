@@ -56,6 +56,10 @@
       <span>💰</span>
       <span class="rail-btn-label">Caja</span>
     </button>
+    <button class="rail-btn" id="rail-personal" onclick="openDrawer('personal',this)" title="Personal">
+      <span>👤</span>
+      <span class="rail-btn-label">Personal</span>
+    </button>
     <button class="rail-btn admin-only" id="rail-inventario" onclick="openDrawer('inventario',this)" title="Inventario" style="display:none">
       <span>📦</span>
       <span class="rail-btn-label">Inventario</span>
@@ -147,6 +151,15 @@
 
     <!-- PANEL: CAJA -->
     <div class="sidebar-panel" id="panel-caja">
+      <!-- TABS -->
+      <div style="display:flex;gap:4px;margin-bottom:8px">
+        <button id="caja-tab-tiempo" onclick="setCajaTab('tiempo')" style="flex:1;padding:6px;border:2px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer">💰 Tiempo</button>
+        <button id="caja-tab-bebida" onclick="setCajaTab('bebida')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.8rem;cursor:pointer">🍺 Bebida</button>
+        <button id="caja-tab-vitrina" onclick="setCajaTab('vitrina')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.8rem;cursor:pointer">🏪 Vitrina</button>
+      </div>
+
+      <!-- TAB: TIEMPO (contenido original) -->
+      <div id="caja-tab-tiempo-content">
       <!-- Total en cajón -->
       <div class="caja-total-card">
         <div class="caja-total-label">💰 Total esperado en cajón</div>
@@ -221,6 +234,123 @@
           Exporta todos los datos (historial, turnos, caja) como archivo JSON descargable
         </div>
       </div>
+      </div><!-- fin caja-tab-tiempo-content -->
+
+      <!-- TAB: BEBIDA -->
+      <div id="caja-tab-bebida-content" style="display:none">
+        <div class="caja-total-card">
+          <div class="caja-total-label">🍺 Stock Bebidas</div>
+          <div class="caja-total-amount" id="bebida-stock-final">Bs 0</div>
+          <div class="caja-total-sub" id="bebida-stock-sub">Stock: Bs 0 + Ventas: Bs 0 − Retiros: Bs 0</div>
+        </div>
+        <div>
+          <div class="caja-section-label">Stock inicial (en Bs)</div>
+          <div class="caja-input-row">
+            <input class="caja-input-num" id="bebida-stock-val" type="number" min="0" placeholder="0" style="width:100%;font-size:1rem">
+            <button class="btn-caja-add" onclick="setStockInicial('bebida')">✓ Fijar</button>
+          </div>
+          <div style="font-size:0.65rem;color:var(--text3);margin-top:4px" id="bebida-stock-label">No fijado aún</div>
+        </div>
+        <div class="caja-divider"></div>
+        <div>
+          <div class="caja-section-label">Ventas del turno</div>
+          <div id="bebida-ventas-list" style="max-height:200px;overflow-y:auto">
+            <div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px">Sin ventas aún</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-size:0.75rem">
+            <span style="color:var(--text3)">Total ventas:</span>
+            <span style="font-family:'JetBrains Mono',monospace;color:var(--green);font-weight:700" id="bebida-ventas-total">Bs 0</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:2px 0 0;font-size:0.65rem">
+            <span style="color:var(--text3)">💵 Efectivo: <span id="bebida-ventas-cash">Bs 0</span>  ·  📱 QR: <span id="bebida-ventas-qr">Bs 0</span></span>
+          </div>
+        </div>
+        <div class="caja-divider"></div>
+        <div>
+          <div class="caja-section-label">Retiros</div>
+          <div class="caja-input-row" style="margin-bottom:6px">
+            <input class="caja-input" id="bebida-retiro-motivo" placeholder="Motivo del retiro..." style="font-size:0.75rem">
+            <input class="caja-input-num" id="bebida-retiro-monto" type="number" min="1" placeholder="Bs">
+            <button class="btn-caja-add red" onclick="addRetiro('bebida')">− Anotar</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-size:0.75rem">
+            <span style="color:var(--text3)">Total retiros:</span>
+            <span style="font-family:'JetBrains Mono',monospace;color:var(--red);font-weight:700" id="bebida-retiro-total">Bs 0</span>
+          </div>
+        </div>
+        <div class="caja-divider"></div>
+        <div>
+          <div class="caja-section-label">Historial de movimientos</div>
+          <div id="bebida-hist-list" style="max-height:250px;overflow-y:auto">
+            <div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px">Sin movimientos registrados</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: VITRINA -->
+      <div id="caja-tab-vitrina-content" style="display:none">
+        <div class="caja-total-card">
+          <div class="caja-total-label">🏪 Stock Vitrina</div>
+          <div class="caja-total-amount" id="vitrina-stock-final">Bs 0</div>
+          <div class="caja-total-sub" id="vitrina-stock-sub">Stock: Bs 0 + Ventas: Bs 0 − Retiros: Bs 0</div>
+        </div>
+        <div>
+          <div class="caja-section-label">Stock inicial (en Bs)</div>
+          <div class="caja-input-row">
+            <input class="caja-input-num" id="vitrina-stock-val" type="number" min="0" placeholder="0" style="width:100%;font-size:1rem">
+            <button class="btn-caja-add" onclick="setStockInicial('vitrina')">✓ Fijar</button>
+          </div>
+          <div style="font-size:0.65rem;color:var(--text3);margin-top:4px" id="vitrina-stock-label">No fijado aún</div>
+        </div>
+        <div class="caja-divider"></div>
+        <div>
+          <div class="caja-section-label">Ventas del turno</div>
+          <div id="vitrina-ventas-list" style="max-height:200px;overflow-y:auto">
+            <div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px">Sin ventas aún</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-size:0.75rem">
+            <span style="color:var(--text3)">Total ventas:</span>
+            <span style="font-family:'JetBrains Mono',monospace;color:var(--green);font-weight:700" id="vitrina-ventas-total">Bs 0</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:2px 0 0;font-size:0.65rem">
+            <span style="color:var(--text3)">💵 Efectivo: <span id="vitrina-ventas-cash">Bs 0</span>  ·  📱 QR: <span id="vitrina-ventas-qr">Bs 0</span></span>
+          </div>
+        </div>
+        <div class="caja-divider"></div>
+        <div>
+          <div class="caja-section-label">Retiros</div>
+          <div class="caja-input-row" style="margin-bottom:6px">
+            <input class="caja-input" id="vitrina-retiro-motivo" placeholder="Motivo del retiro..." style="font-size:0.75rem">
+            <input class="caja-input-num" id="vitrina-retiro-monto" type="number" min="1" placeholder="Bs">
+            <button class="btn-caja-add red" onclick="addRetiro('vitrina')">− Anotar</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-size:0.75rem">
+            <span style="color:var(--text3)">Total retiros:</span>
+            <span style="font-family:'JetBrains Mono',monospace;color:var(--red);font-weight:700" id="vitrina-retiro-total">Bs 0</span>
+          </div>
+        </div>
+        <div class="caja-divider"></div>
+        <div>
+          <div class="caja-section-label">Historial de movimientos</div>
+          <div id="vitrina-hist-list" style="max-height:250px;overflow-y:auto">
+            <div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px">Sin movimientos registrados</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL: PERSONAL -->
+    <div class="sidebar-panel" id="panel-personal">
+      <div style="display:flex;gap:4px;margin-bottom:8px">
+        <button id="personal-mode-personal" onclick="setPersonalMode('personal')" style="flex:1;padding:6px;border:2px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer">👷 Personal</button>
+        <button id="personal-mode-vip" onclick="setPersonalMode('vip')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.8rem;cursor:pointer">👑 V.I.P.</button>
+      </div>
+      <div id="personal-mode-desc" style="font-size:0.65rem;color:var(--text3);margin-bottom:6px;text-align:center">Precio con Bs 1 de descuento</div>
+      <div id="personal-productos" style="max-height:50vh;overflow-y:auto"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);margin-top:8px">
+        <span style="font-weight:700;font-size:0.9rem">Total: <span id="personal-total">Bs 0</span></span>
+        <button id="personal-confirmar-btn" onclick="confirmPersonalSale()" disabled style="background:#22c55e;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-weight:700;font-size:0.8rem;cursor:pointer">✓ Registrar</button>
+      </div>
     </div>
 
     <!-- PANEL: INVENTARIO (solo admin) -->
@@ -237,14 +367,18 @@
         </div>
       </div>
 
-      <!-- Mover almacén → nevera -->
+      <!-- Mover almacén → nevera/vitrina -->
       <div class="caja-section" style="margin-bottom:10px">
         <div class="caja-section-label">🔄 Mover a nevera/vitrina</div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
           <select id="inv-select-mover" class="caja-input-num" style="width:100%;font-size:0.8rem;padding:6px 8px"></select>
+          <div style="display:flex;gap:8px;align-items:center;font-size:0.75rem">
+            <label><input type="radio" name="inv-destino" value="nevera" checked> Nevera</label>
+            <label><input type="radio" name="inv-destino" value="vitrina"> Vitrina</label>
+          </div>
           <div style="display:flex;gap:6px">
             <input id="inv-mover-cantidad" type="number" min="1" placeholder="Cantidad" class="caja-input-num" style="flex:1">
-            <button class="btn-caja-add" onclick="invMover()">→ Mover</button>
+            <button class="btn-caja-add" onclick="inv_mover()">→ Mover</button>
           </div>
         </div>
       </div>
@@ -503,23 +637,16 @@
 <!-- MINIBAR MODAL -->
 <div class="minibar-overlay" id="minibarOverlay" onclick="closeMinibarOutside(event)">
   <div class="minibar-modal">
-    <div class="minibar-header">
-      <h3>🛒 Minibar — <span id="mb-roomlabel">Hab. —</span></h3>
-      <button class="modal-close" onclick="closeModal('minibarOverlay')">✕</button>
-    </div>
     <div class="minibar-body">
       <div class="minibar-products" id="mbProducts"></div>
       <div class="minibar-cart">
-        <div class="cart-title">🧾 Pedido</div>
+        <div class="cart-title">🛒 <span id="mb-roomlabel">Hab. —</span></div>
         <div class="cart-items" id="cartItems"><div class="cart-empty">Vacío</div></div>
         <div class="cart-divider"></div>
         <div class="cart-total-row"><span>Total</span><span id="cartTotal">Bs 0</span></div>
         <button class="btn-cart-confirm" onclick="confirmMinibar()">✓ Agregar al cuarto</button>
         <button class="btn-cart-clear" onclick="clearCart()">✕ Limpiar</button>
       </div>
-    </div>
-    <div class="minibar-footer">
-      <button class="btn btn-ghost" onclick="closeModal('minibarOverlay')">Cerrar</button>
     </div>
   </div>
 </div>
@@ -532,7 +659,11 @@
       <button class="modal-close" onclick="closeModal('shiftOverlay')">✕</button>
     </div>
     <div id="shiftWarn" class="shift-warn" style="display:none">
-      ⚠ Hay <strong id="shiftWarnCount">0</strong> habitación(es) aún ocupada(s). Se cerrarán los checkouts pendientes al confirmar.
+      ⚠ Hay <strong id="shiftWarnCount">0</strong> habitación(es) aún ocupada(s).
+    </div>
+    <div id="shiftOccupiedStep" style="display:none">
+      <div style="padding:12px 16px 4px;font-size:0.75rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px">🔑 Habitaciones ocupadas — ¿Pagaron?</div>
+      <div id="shiftOccupiedList" style="padding:0 16px 12px;display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto"></div>
     </div>
     <div class="shift-summary" id="shiftSummary"></div>
     <div class="shift-breakdown">
