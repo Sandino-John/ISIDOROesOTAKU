@@ -64,6 +64,10 @@
       <span>📦</span>
       <span class="rail-btn-label">Inventario</span>
     </button>
+    <button class="rail-btn admin-only" id="rail-contabilidad" onclick="openDrawer('contabilidad',this)" title="Contabilidad" style="display:none">
+      <span>📒</span>
+      <span class="rail-btn-label">Libros</span>
+    </button>
   </div>
 
   <!-- DRAWER: panel desplegable -->
@@ -388,6 +392,31 @@
       <div id="inv-tabla" style="font-size:0.75rem"></div>
     </div>
 
+    <!-- PANEL: CONTABILIDAD -->
+    <div class="sidebar-panel" id="panel-contabilidad">
+      <!-- Tabs -->
+      <div style="display:flex;gap:4px;margin-bottom:8px">
+        <button class="contab-tab active" id="contab-tab-diario" onclick="setContabTab('diario')">Diario</button>
+        <button class="contab-tab" id="contab-tab-mayor" onclick="setContabTab('mayor')">Mayor</button>
+        <button class="contab-tab" id="contab-tab-resultados" onclick="setContabTab('resultados')">Resultados</button>
+        <button class="contab-tab" id="contab-tab-bebidas" onclick="setContabTab('bebidas')">🍺 Bebidas</button>
+        <button class="contab-tab" id="contab-tab-vitrina" onclick="setContabTab('vitrina')">🏪 Vitrina</button>
+      </div>
+      <!-- Rango de fechas -->
+      <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;font-size:0.72rem">
+        <input type="date" id="contab-desde" class="contab-date" onchange="renderContabilidad()">
+        <span style="color:var(--text3)">a</span>
+        <input type="date" id="contab-hasta" class="contab-date" onchange="renderContabilidad()">
+        <button class="contab-btn-hoy" onclick="contabHoy()">Hoy</button>
+      </div>
+      <!-- Contenido tabs -->
+      <div id="contab-content-diario"></div>
+      <div id="contab-content-mayor" style="display:none"></div>
+      <div id="contab-content-resultados" style="display:none"></div>
+      <div id="contab-content-bebidas" style="display:none"></div>
+      <div id="contab-content-vitrina" style="display:none"></div>
+    </div>
+
   </div>
 </aside>
 
@@ -618,9 +647,9 @@
           <div class="confirm-screen">
             <div class="confirm-icon">🚪</div>
             <div class="confirm-title">¿Confirmar salida?</div>
-            <div class="confirm-subtitle" id="confirm-subtitle">Hab. — · —</div>
+            <div class="confirm-subtitle" id="confirm-subtitle"></div>
             <div class="confirm-amount" id="confirm-amount">Bs 0</div>
-            <div id="confirm-pago-summary" style="font-size:0.72rem;color:var(--text3);text-align:center;margin-top:-6px"></div>
+            <div id="confirm-pago-summary" class="confirm-pago-summary"></div>
           </div>
           <div class="modal-footer" style="margin-top:auto;padding:10px 24px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
             <button class="btn btn-ghost" onclick="slideBackToConfirm()" style="padding:12px 0;font-size:0.9rem;justify-content:center">← Volver</button>
@@ -731,6 +760,12 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="js/caja-turno.js"></script>
+<script src="js/minibar-vitrina.js"></script>
 <script src="app.js"></script>
+<script src="js/core-operativo.js"></script>
+<script src="js/reportes-backups.js"></script>
+<script src="js/checkout.js"></script>
+<script src="js/contabilidad.js"></script>
 </body>
 </html>

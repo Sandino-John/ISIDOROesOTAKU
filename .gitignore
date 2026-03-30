@@ -1,0 +1,29 @@
+# Dependencies
+/node_modules/
+
+# Local editor / AI settings
+/.claude/settings.local.json
+
+# OS noise
+Thumbs.db
+.DS_Store
+
+# Runtime databases
+/*.db
+/*.db-shm
+/*.db-wal
+/inventario/*.db
+/inventario/*.db-shm
+/inventario/*.db-wal
+
+# Generated reports and backups
+/public/Reportes Diarios/
+
+# Temporary logs
+/tmp/
+
+# Generated or misplaced exports under images
+/public/images/*.pdf
+/public/images/*.json
+/public/images/motel23_autobackup_*.json
+
