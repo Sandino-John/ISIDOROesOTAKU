@@ -1,140 +1,194 @@
-function registerEstadoRoutes({ app, db }) {
+module.exports = function registerEstadoRoutes({ app, db }) {
   // ─── OCUPACION ────────────────────────────────────────────────────────────────
-  app.get('/api/ocupacion', (req, res) => {
-    const rows = db.prepare('SELECT * FROM ocupacion').all();
-    const result = {};
-    rows.forEach(r => { result[r.num] = JSON.parse(r.datos); });
-    res.json(result);
+  app.get('/api/ocupacion', async (req, res) => {
+    try {
+      const rows = await db.all('SELECT * FROM ocupacion');
+      const result = {};
+      rows.forEach(r => { result[r.num] = JSON.parse(r.datos); });
+      res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  
-  app.post('/api/ocupacion', (req, res) => {
-    const ocupacion = req.body;
-    const upsert = db.prepare('INSERT OR REPLACE INTO ocupacion (num, datos) VALUES (?, ?)');
-    const del = db.prepare('DELETE FROM ocupacion WHERE num = ?');
-    const transaction = db.transaction((occ) => {
-      // Primero borramos todas
-      db.prepare('DELETE FROM ocupacion').run();
-      // Insertamos las que vienen
-      Object.entries(occ).forEach(([num, datos]) => {
-        upsert.run(parseInt(num), JSON.stringify(datos));
-      });
-    });
-    transaction(ocupacion);
-    res.json({ ok: true });
-  });
-  
-  // ─── HISTORIAL ────────────────────────────────────────────────────────────────
-  app.get('/api/historial', (req, res) => {
-    const rows = db.prepare('SELECT datos FROM historial ORDER BY id DESC LIMIT 200').all();
-    res.json(rows.map(r => JSON.parse(r.datos)));
-  });
-  
-  app.post('/api/historial', (req, res) => {
-    db.prepare('INSERT INTO historial (datos) VALUES (?)').run(JSON.stringify(req.body));
-    res.json({ ok: true });
-  });
-  
-  app.put('/api/historial', (req, res) => {
-    const entries = req.body;
-    const transaction = db.transaction((arr) => {
-      db.prepare('DELETE FROM historial').run();
-      const ins = db.prepare('INSERT INTO historial (datos) VALUES (?)');
-      arr.forEach(e => ins.run(JSON.stringify(e)));
-    });
-    transaction(entries);
-    res.json({ ok: true });
-  });
-  
-  // ─── TURNO ACTUAL ─────────────────────────────────────────────────────────────
-  app.get('/api/turno', (req, res) => {
-    const row = db.prepare('SELECT datos FROM turno_actual WHERE id = 1').get();
-    res.json(row ? JSON.parse(row.datos) : null);
-  });
-  
-  app.post('/api/turno', (req, res) => {
-    db.prepare('INSERT OR REPLACE INTO turno_actual (id, datos) VALUES (1, ?)').run(JSON.stringify(req.body));
-    res.json({ ok: true });
-  });
-  
-  // ─── TURNOS CERRADOS ──────────────────────────────────────────────────────────
-  app.get('/api/turnos', (req, res) => {
-    const rows = db.prepare('SELECT datos FROM turnos ORDER BY id DESC').all();
-    res.json(rows.map(r => JSON.parse(r.datos)));
-  });
-  
-  app.post('/api/turnos', (req, res) => {
-    db.prepare('INSERT INTO turnos (datos) VALUES (?)').run(JSON.stringify(req.body));
-    res.json({ ok: true });
-  });
-  
-  app.put('/api/turnos', (req, res) => {
-    const entries = req.body;
-    const transaction = db.transaction((arr) => {
-      db.prepare('DELETE FROM turnos').run();
-      const ins = db.prepare('INSERT INTO turnos (datos) VALUES (?)');
-      arr.forEach(e => ins.run(JSON.stringify(e)));
-    });
-    transaction(entries);
-    res.json({ ok: true });
-  });
-  
-  // ─── PRODUCTOS ────────────────────────────────────────────────────────────────
-  app.get('/api/productos', (req, res) => {
-    const row = db.prepare('SELECT datos FROM productos WHERE id = 1').get();
-    res.json(row ? JSON.parse(row.datos) : null);
-  });
-  
-  app.post('/api/productos', (req, res) => {
-    db.prepare('INSERT OR REPLACE INTO productos (id, datos) VALUES (1, ?)').run(JSON.stringify(req.body));
-    res.json({ ok: true });
-  });
-  
-  // ─── CONFIG ───────────────────────────────────────────────────────────────────
-  app.get('/api/config', (req, res) => {
-    const row = db.prepare("SELECT valor FROM config WHERE clave = 'main'").get();
-    res.json(row ? JSON.parse(row.valor) : null);
-  });
-  
-  app.post('/api/config', (req, res) => {
-    db.prepare("INSERT OR REPLACE INTO config (clave, valor) VALUES ('main', ?)").run(JSON.stringify(req.body));
-    res.json({ ok: true });
-  });
-  
-  // ─── CAJA ─────────────────────────────────────────────────────────────────────
-  app.get('/api/caja', (req, res) => {
-    const row = db.prepare('SELECT datos FROM caja WHERE id = 1').get();
-    res.json(row ? JSON.parse(row.datos) : null);
-  });
-  
-  app.post('/api/caja', (req, res) => {
-    db.prepare('INSERT OR REPLACE INTO caja (id, datos) VALUES (1, ?)').run(JSON.stringify(req.body));
-    res.json({ ok: true });
-  });
-  
-  // ─── DIAS ─────────────────────────────────────────────────────────────────────
-  app.get('/api/dias', (req, res) => {
-    const rows = db.prepare('SELECT fecha, datos FROM dias ORDER BY fecha DESC LIMIT 30').all();
-    const result = {};
-    rows.forEach(r => { result[r.fecha] = JSON.parse(r.datos); });
-    res.json(result);
-  });
-  
-  app.post('/api/dias', (req, res) => {
-    const { fecha, datos } = req.body;
-    db.prepare('INSERT OR REPLACE INTO dias (fecha, datos) VALUES (?, ?)').run(fecha, JSON.stringify(datos));
-    res.json({ ok: true });
-  });
-  
-  // ─── LOG DE ACTIVIDAD ────────────────────────────────────────────────────────
-  app.get('/api/activitylog', (req, res) => {
-    const row = db.prepare('SELECT datos FROM log WHERE id = 1').get();
-    res.json(row ? JSON.parse(row.datos) : []);
-  });
-  
-  app.post('/api/activitylog', (req, res) => {
-    db.prepare('INSERT OR REPLACE INTO log (id, datos) VALUES (1, ?)').run(JSON.stringify(req.body));
-    res.json({ ok: true });
-  });
-}
 
-module.exports = registerEstadoRoutes;
+  app.post('/api/ocupacion', async (req, res) => {
+    try {
+      const ocupacion = req.body;
+      await db.transaction(async (client) => {
+        await client.query('DELETE FROM ocupacion');
+        for (const [num, datos] of Object.entries(ocupacion)) {
+          await client.query(
+            'INSERT INTO ocupacion (num, datos) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET datos = EXCLUDED.datos',
+            [parseInt(num), JSON.stringify(datos)]
+          );
+        }
+      });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── HISTORIAL ────────────────────────────────────────────────────────────────
+  app.get('/api/historial', async (req, res) => {
+    try {
+      const rows = await db.all('SELECT datos FROM historial ORDER BY id DESC LIMIT 200');
+      res.json(rows.map(r => JSON.parse(r.datos)));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/historial', async (req, res) => {
+    try {
+      await db.run('INSERT INTO historial (datos) VALUES ($1)', [JSON.stringify(req.body)]);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/historial', async (req, res) => {
+    try {
+      const entries = req.body;
+      await db.transaction(async (client) => {
+        await client.query('DELETE FROM historial');
+        for (const e of entries) {
+          await client.query('INSERT INTO historial (datos) VALUES ($1)', [JSON.stringify(e)]);
+        }
+      });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── TURNO ACTUAL ─────────────────────────────────────────────────────────────
+  app.get('/api/turno', async (req, res) => {
+    try {
+      const row = await db.get('SELECT datos FROM turno_actual WHERE id = 1');
+      res.json(row ? JSON.parse(row.datos) : null);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/turno', async (req, res) => {
+    try {
+      await db.run(
+        'INSERT INTO turno_actual (id, datos) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET datos = EXCLUDED.datos',
+        [JSON.stringify(req.body)]
+      );
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── TURNOS CERRADOS ──────────────────────────────────────────────────────────
+  app.get('/api/turnos', async (req, res) => {
+    try {
+      const rows = await db.all('SELECT datos FROM turnos ORDER BY id DESC');
+      res.json(rows.map(r => JSON.parse(r.datos)));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/turnos', async (req, res) => {
+    try {
+      await db.run('INSERT INTO turnos (datos) VALUES ($1)', [JSON.stringify(req.body)]);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/turnos', async (req, res) => {
+    try {
+      const entries = req.body;
+      await db.transaction(async (client) => {
+        await client.query('DELETE FROM turnos');
+        for (const e of entries) {
+          await client.query('INSERT INTO turnos (datos) VALUES ($1)', [JSON.stringify(e)]);
+        }
+      });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── PRODUCTOS (blob PMS) ──────────────────────────────────────────────────────
+  app.get('/api/productos', async (req, res) => {
+    try {
+      const row = await db.get('SELECT datos FROM pms_productos WHERE id = 1');
+      res.json(row ? JSON.parse(row.datos) : null);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/productos', async (req, res) => {
+    try {
+      await db.run(
+        'INSERT INTO pms_productos (id, datos) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET datos = EXCLUDED.datos',
+        [JSON.stringify(req.body)]
+      );
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── CONFIG ───────────────────────────────────────────────────────────────────
+  app.get('/api/config', async (req, res) => {
+    try {
+      const row = await db.get("SELECT valor FROM config WHERE clave = 'main'");
+      res.json(row ? JSON.parse(row.valor) : null);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/config', async (req, res) => {
+    try {
+      await db.run(
+        "INSERT INTO config (clave, valor) VALUES ('main', $1) ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor",
+        [JSON.stringify(req.body)]
+      );
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── CAJA ─────────────────────────────────────────────────────────────────────
+  app.get('/api/caja', async (req, res) => {
+    try {
+      const row = await db.get('SELECT datos FROM caja WHERE id = 1');
+      res.json(row ? JSON.parse(row.datos) : null);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/caja', async (req, res) => {
+    try {
+      await db.run(
+        'INSERT INTO caja (id, datos) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET datos = EXCLUDED.datos',
+        [JSON.stringify(req.body)]
+      );
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── DIAS ─────────────────────────────────────────────────────────────────────
+  app.get('/api/dias', async (req, res) => {
+    try {
+      const rows = await db.all('SELECT fecha, datos FROM dias ORDER BY fecha DESC LIMIT 30');
+      const result = {};
+      rows.forEach(r => { result[r.fecha] = JSON.parse(r.datos); });
+      res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/dias', async (req, res) => {
+    try {
+      const { fecha, datos } = req.body;
+      await db.run(
+        'INSERT INTO dias (fecha, datos) VALUES ($1, $2) ON CONFLICT (fecha) DO UPDATE SET datos = EXCLUDED.datos',
+        [fecha, JSON.stringify(datos)]
+      );
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── LOG DE ACTIVIDAD ─────────────────────────────────────────────────────────
+  app.get('/api/activitylog', async (req, res) => {
+    try {
+      const row = await db.get('SELECT datos FROM log WHERE id = 1');
+      res.json(row ? JSON.parse(row.datos) : []);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/activitylog', async (req, res) => {
+    try {
+      await db.run(
+        'INSERT INTO log (id, datos) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET datos = EXCLUDED.datos',
+        [JSON.stringify(req.body)]
+      );
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+};

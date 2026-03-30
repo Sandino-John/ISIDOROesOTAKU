@@ -1,6 +1,9 @@
 # Dependencies
 /node_modules/
 
+# Variables de entorno (contiene contraseñas — nunca versionar)
+.env
+
 # Local editor / AI settings
 /.claude/settings.local.json
 
