@@ -16,6 +16,11 @@
         if (el) el.textContent = me.motel_nombre || 'Motel 23';
         // Guardar rol para control de acceso
         window._rol = me.rol;
+        // Mostrar botón superadmin si corresponde
+        if (me.rol === 'superadmin') {
+          const btn = document.getElementById('btnSuperadmin');
+          if (btn) btn.style.display = '';
+        }
         return true;
       }
     } catch { /* sin conexión */ }

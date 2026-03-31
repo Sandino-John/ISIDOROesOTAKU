@@ -242,6 +242,22 @@ async function initDb() {
     );
   `);
 
+  // ── Cobros mensuales (comisión 0.5%) ─────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cobros (
+      id         SERIAL  PRIMARY KEY,
+      motel_id   INTEGER NOT NULL REFERENCES motels(id),
+      mes        TEXT    NOT NULL,
+      ingresos   REAL    DEFAULT 0,
+      comision   REAL    DEFAULT 0,
+      pagado     BOOLEAN DEFAULT false,
+      fecha_pago TEXT,
+      notas      TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE (motel_id, mes)
+    );
+  `);
+
   console.log('✅ Esquema multi-tenant listo');
 
   // ── Seed: crear Motel 23 + superadmin si no existen ──────────────────────
@@ -303,7 +319,7 @@ async function initDb() {
 }
 
 // ─── RUTAS ────────────────────────────────────────────────────────────────────
-const { requireAuth, requireAuthHtml } = registerAuthRoutes({ app, db: pool });
+const { requireAuth, requireAuthHtml, requireSuperadminHtml } = registerAuthRoutes({ app, db: pool });
 
 registerEstadoRoutes({ app, db: pool, requireAuth });
 registerInventarioApiRoutes({ app, db: pool, requireAuth });
@@ -318,15 +334,23 @@ app.use('/almacen/entradas',  require('./inventario/routes/entradas'));
 app.use('/almacen/salidas',   require('./inventario/routes/salidas'));
 app.use('/almacen/reportes',  require('./inventario/routes/reportes'));
 
+app.get('/superadmin', requireAuthHtml, requireSuperadminHtml, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'superadmin.html'));
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── ARRANCAR ─────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT, 10) || 3001;
 
+// Capturar errores no controlados para que sean visibles
+process.on('uncaughtException',  err => { console.error('❌ UNCAUGHT:', err); });
+process.on('unhandledRejection', err => { console.error('❌ REJECTION:', err); });
+
 initDb()
   .then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log('');
       console.log('🦋 Motel 23 SaaS corriendo en:');
       console.log(`   http://localhost:${PORT}  (esta PC)`);
@@ -334,6 +358,14 @@ initDb()
       console.log('   Para acceder desde celular u otra PC,');
       console.log(`   usa la IP de esta computadora + :${PORT}`);
       console.log('');
+    });
+    server.on('error', err => {
+      console.error('❌ Error del servidor HTTP:', err.code, err.message);
+      if (err.code === 'EADDRINUSE') {
+        console.error(`   El puerto ${PORT} está ocupado por otro proceso.`);
+        console.error('   Cerrá todos los procesos Node y volvé a intentar.');
+      }
+      process.exit(1);
     });
   })
   .catch(err => {

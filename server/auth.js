@@ -41,9 +41,15 @@ function requireAuthHtml(req, res, next) {
   }
 }
 
-/** Solo superadmin */
+/** Solo superadmin — para rutas API (JSON) */
 function requireSuperadmin(req, res, next) {
   if (req.rol !== 'superadmin') return res.status(403).json({ error: 'Acceso denegado' });
+  next();
+}
+
+/** Solo superadmin — para rutas HTML (redirige a /) */
+function requireSuperadminHtml(req, res, next) {
+  if (req.rol !== 'superadmin') return res.redirect('/');
   next();
 }
 
@@ -205,7 +211,80 @@ function registerAuthRoutes({ app, db }) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  return { requireAuth, requireAuthHtml, requireSuperadmin };
+  // ─── COBROS: estado de pagos por mes ─────────────────────────────────────
+  app.get('/api/superadmin/cobros', requireAuth, requireSuperadmin, async (req, res) => {
+    try {
+      const mes = req.query.mes || new Date().toISOString().slice(0, 7);
+      // Calcular ingresos del mes para cada motel
+      const motels = await db.all('SELECT id FROM motels WHERE activo = true');
+      const resultado = [];
+
+      for (const m of motels) {
+        const { rows: [{ total: ingresos }] } = await db.query(
+          `SELECT COALESCE(SUM(monto), 0) AS total
+           FROM asientos_contables
+           WHERE motel_id = $1
+             AND cuenta_haber IN ('4001','4002','4003')
+             AND fecha >= $2 AND fecha < $3`,
+          [m.id, mes + '-01', nextMonth(mes) + '-01']
+        );
+        const ing      = Number(ingresos);
+        const comision = Math.max(5, ing * 0.005);
+
+        // Buscar o crear registro de cobro
+        const cobro = await db.get(
+          'SELECT * FROM cobros WHERE motel_id = $1 AND mes = $2',
+          [m.id, mes]
+        );
+        if (!cobro) {
+          await db.run(
+            `INSERT INTO cobros (motel_id, mes, ingresos, comision) VALUES ($1, $2, $3, $4)
+             ON CONFLICT (motel_id, mes) DO UPDATE SET ingresos = $3, comision = $4`,
+            [m.id, mes, ing, comision]
+          );
+        } else {
+          // Actualizar ingresos/comisión con datos frescos
+          await db.run(
+            'UPDATE cobros SET ingresos = $1, comision = $2 WHERE motel_id = $3 AND mes = $4',
+            [ing, comision, m.id, mes]
+          );
+        }
+        resultado.push({ motel_id: m.id, mes, ingresos: ing, comision, pagado: cobro?.pagado || false, fecha_pago: cobro?.fecha_pago || null });
+      }
+      res.json(resultado);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/superadmin/cobros/marcar', requireAuth, requireSuperadmin, async (req, res) => {
+    try {
+      const { motel_id, mes, pagado, notas } = req.body || {};
+      if (!motel_id || !mes) return res.status(400).json({ error: 'Faltan datos' });
+      const fecha_pago = pagado ? new Date().toISOString().slice(0, 10) : null;
+      await db.run(
+        `INSERT INTO cobros (motel_id, mes, pagado, fecha_pago, notas)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (motel_id, mes) DO UPDATE
+           SET pagado = $3, fecha_pago = $4, notas = $5`,
+        [motel_id, mes, !!pagado, fecha_pago, notas || null]
+      );
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/superadmin/motel/toggle', requireAuth, requireSuperadmin, async (req, res) => {
+    try {
+      const { motel_id, activo } = req.body || {};
+      await db.run('UPDATE motels SET activo = $1 WHERE id = $2', [!!activo, motel_id]);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  return { requireAuth, requireAuthHtml, requireSuperadmin, requireSuperadminHtml };
+}
+
+function nextMonth(mes) {
+  const [y, m] = mes.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
 }
 
 module.exports = { requireAuth, requireAuthHtml, requireSuperadmin, registerAuthRoutes };

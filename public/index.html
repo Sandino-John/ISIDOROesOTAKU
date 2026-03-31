@@ -56,6 +56,7 @@
     <button class="btn-config" onclick="openConfig()">⚙ Tarifas</button>
     <button class="btn-admin" id="btnAdmin" onclick="toggleAdmin()" title="Modo super usuario — editar horas de entrada">🔧</button>
     <button class="btn-config" onclick="toggleFullscreen()" id="btn-fs" title="Pantalla completa">⛶</button>
+    <a id="btnSuperadmin" href="/superadmin" style="display:none" class="btn-config" title="Panel superadmin" target="_blank">🛡 Admin</a>
     <button class="btn-config" onclick="handleLogout()" title="Cerrar sesión" style="color:var(--red);border-color:rgba(248,113,113,0.3)">⏻ Salir</button>
     <input type="file" id="backupFileInput" accept=".json" style="display:none" onchange="importBackup(event)">
   </div>
