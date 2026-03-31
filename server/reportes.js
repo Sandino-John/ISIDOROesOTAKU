@@ -1,6 +1,6 @@
 const { badRequest, handleRouteError, readString } = require('./http-utils');
 
-module.exports = function registerReportesRoutes({ app, fs, path, puppeteer, baseDir }) {
+module.exports = function registerReportesRoutes({ app, fs, path, puppeteer, baseDir, requireAuth }) {
   function resolveReportFilePath(nombre) {
     const rawName = readString(nombre, 'Nombre de archivo');
     if (rawName.includes('/') || rawName.includes('\\')) throw badRequest('Ruta no permitida');
@@ -18,7 +18,7 @@ module.exports = function registerReportesRoutes({ app, fs, path, puppeteer, bas
   }
 
   // ─── GUARDAR ARCHIVO EN REPORTES DIARIOS ───────────────────────────────────
-  app.post('/api/guardar-archivo', async (req, res) => {
+  app.post('/api/guardar-archivo', requireAuth, async (req, res) => {
     let browser;
     try {
       const { nombre, contenido } = req.body;
