@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= titulo %> — Inventario</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>body{background:#f5f6fa;font-family:'Segoe UI',system-ui,sans-serif}.card{border-radius:10px}</style>
+</head>
+<body>
+  <%- include('../_navbar') %>
+  <main class="container py-4">
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <a href="<%= baseUrl %>/productos" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
+      <h4 class="fw-bold mb-0"><%= titulo %></h4>
+    </div>
+    <div class="card border-0 shadow-sm" style="max-width:600px">
+      <div class="card-body p-4">
+        <form method="post">
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold">Nombre <span class="text-danger">*</span></label>
+              <input type="text" name="nombre" class="form-control" required value="<%= producto ? producto.nombre : '' %>" placeholder="Ej: Paceña Macanuda">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold">Categoría</label>
+              <select name="categoria_id" class="form-select">
+                <option value="">Sin categoría</option>
+                <% categorias.forEach(c => { %>
+                  <option value="<%= c.id %>" <%= producto && producto.categoria_id == c.id ? 'selected' : '' %>><%= c.nombre %></option>
+                <% }) %>
+              </select>
+            </div>
+            <!-- Fila 2: Stocks -->
+            <div class="col-sm-2 d-flex flex-column">
+              <label class="form-label fw-semibold text-muted small" style="min-height:2.5rem">Última<br>Entrada</label>
+              <input type="text" class="form-control" disabled value="<%= producto && producto.ultima_entrada != null ? producto.ultima_entrada : '—' %>">
+            </div>
+            <div class="col-sm-2 d-flex flex-column">
+              <label class="form-label fw-semibold small" style="min-height:2.5rem">Stock<br>Total</label>
+              <input type="number" name="stock_actual" id="stock_actual" class="form-control fw-bold" readonly value="<%= producto ? producto.stock_actual : 0 %>">
+            </div>
+            <div class="col-sm-2 d-flex flex-column">
+              <label class="form-label fw-semibold small" style="min-height:2.5rem">Stock<br>Almacén</label>
+              <input type="number" name="stock_almacen" id="stock_almacen" class="form-control" min="0" value="<%= producto ? producto.stock_almacen : 0 %>">
+            </div>
+            <div class="col-sm-2 flex-column" id="div_nevera">
+              <label class="form-label fw-semibold small" style="min-height:2.5rem">Stock<br>Nevera</label>
+              <input type="number" name="stock_nevera" id="stock_nevera" class="form-control" min="0" value="<%= producto ? producto.stock_nevera : 0 %>">
+            </div>
+            <div class="col-sm-2 flex-column" id="div_vitrina">
+              <label class="form-label fw-semibold small" style="min-height:2.5rem">Stock<br>Vitrina</label>
+              <input type="number" name="stock_vitrina" id="stock_vitrina" class="form-control" min="0" value="<%= producto ? producto.stock_vitrina : 0 %>">
+            </div>
+            <div class="col-sm-2 d-flex flex-column">
+              <label class="form-label fw-semibold text-muted small" style="min-height:2.5rem">Mínimo</label>
+              <input type="number" name="stock_minimo" class="form-control" min="0" value="<%= producto ? producto.stock_minimo : 5 %>">
+            </div>
+            <!-- Fila 3: Precios + Margen -->
+            <div class="col-sm-4">
+              <label class="form-label fw-semibold">Precio Compra</label>
+              <div class="input-group"><span class="input-group-text">Bs</span>
+              <input type="number" name="precio_compra" id="precio_compra" class="form-control" step="0.01" min="0" value="<%= producto ? producto.precio_compra : 0 %>"></div>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label fw-semibold">Precio Venta</label>
+              <div class="input-group"><span class="input-group-text">Bs</span>
+              <input type="number" name="precio_venta" id="precio_venta" class="form-control" step="0.01" min="0" value="<%= producto ? producto.precio_venta : 0 %>"></div>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label fw-semibold text-muted small">Margen Ganancia</label>
+              <input type="text" class="form-control" id="margen_ganancia" disabled>
+            </div>
+            <div class="col-12 pt-2">
+              <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg me-1"></i>Guardar</button>
+              <a href="<%= baseUrl %>/productos" class="btn btn-outline-secondary ms-2">Cancelar</a>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    function calcMargen() {
+      const compra = parseFloat(document.getElementById('precio_compra').value) || 0;
+      const venta = parseFloat(document.getElementById('precio_venta').value) || 0;
+      const margenEl = document.getElementById('margen_ganancia');
+      if (compra === 0 && venta === 0) { margenEl.value = '—'; margenEl.className = 'form-control'; return; }
+      const ganancia = venta - compra;
+      const pct = compra > 0 ? ((ganancia / compra) * 100).toFixed(1) : '∞';
+      margenEl.value = `Bs ${ganancia.toFixed(2)} (${pct}%)`;
+      margenEl.className = 'form-control fw-bold ' + (ganancia > 0 ? 'text-success' : ganancia < 0 ? 'text-danger' : 'text-muted');
+    }
+    document.getElementById('precio_compra').addEventListener('input', calcMargen);
+    document.getElementById('precio_venta').addEventListener('input', calcMargen);
+    calcMargen();
+
+    // Categorías de bebidas (nevera) vs vitrina
+    const catsBebida = [8, 9, 10]; // Bebidas Alcohólicas, Refrescos, Energizantes
+    const catSelect = document.querySelector('select[name="categoria_id"]');
+    const divNevera = document.getElementById('div_nevera');
+    const divVitrina = document.getElementById('div_vitrina');
+
+    function toggleSeccion() {
+      const catId = parseInt(catSelect.value) || 0;
+      const esBebida = catsBebida.includes(catId);
+      divNevera.style.display = esBebida ? 'flex' : 'none';
+      divVitrina.style.display = esBebida ? 'none' : 'flex';
+      if (esBebida) document.getElementById('stock_vitrina').value = 0;
+      else document.getElementById('stock_nevera').value = 0;
+      calcStock();
+    }
+    catSelect.addEventListener('change', toggleSeccion);
+    toggleSeccion();
+
+    // Stock Total = Stock Almacén + Stock Nevera/Vitrina
+    function calcStock() {
+      const almacen = parseInt(document.getElementById('stock_almacen').value) || 0;
+      const nevera = parseInt(document.getElementById('stock_nevera').value) || 0;
+      const vitrina = parseInt(document.getElementById('stock_vitrina').value) || 0;
+      document.getElementById('stock_actual').value = almacen + nevera + vitrina;
+    }
+    document.getElementById('stock_almacen').addEventListener('input', calcStock);
+    document.getElementById('stock_nevera').addEventListener('input', calcStock);
+    document.getElementById('stock_vitrina').addEventListener('input', calcStock);
+  </script>
+</body>
+</html>

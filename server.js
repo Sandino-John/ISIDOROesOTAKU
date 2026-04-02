@@ -1,227 +1,374 @@
-const express = require('express');
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+require('dotenv').config();
+const express    = require('express');
+const path       = require('path');
+const fs         = require('fs');
+const puppeteer  = require('puppeteer');
+const cookieParser = require('cookie-parser');
+const pool       = require('./db/pool');
+const { registerAuthRoutes }          = require('./server/auth');
+const registerContabilidadRoutes      = require('./server/contabilidad');
+const registerEstadoRoutes            = require('./server/estado');
+const registerInventarioApiRoutes     = require('./server/inventario-api');
+const registerReportesRoutes          = require('./server/reportes');
 
 const app = express();
-const db = new Database('motel23.db');
-
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// ─── INICIALIZAR BASE DE DATOS ────────────────────────────────────────────────
-db.exec(`
-  CREATE TABLE IF NOT EXISTS ocupacion (
-    num INTEGER PRIMARY KEY,
-    datos TEXT
-  );
+// ─── INICIALIZAR BASE DE DATOS ─────────────────────────────────────────────────
+async function initDb() {
 
-  CREATE TABLE IF NOT EXISTS historial (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    datos TEXT,
-    fecha TEXT DEFAULT (date('now'))
-  );
+  // ── Detectar si venimos de un esquema Phase 1 (sin tabla motels) y migrar ──
+  const { rows: [{ exists: motelsExists }] } = await pool.query(`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'motels'
+    ) AS exists
+  `);
 
-  CREATE TABLE IF NOT EXISTS turno_actual (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    datos TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS turnos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    datos TEXT,
-    fecha TEXT DEFAULT (date('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS productos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    datos TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS config (
-    clave TEXT PRIMARY KEY,
-    valor TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS caja (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    datos TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS dias (
-    fecha TEXT PRIMARY KEY,
-    datos TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS log (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    datos TEXT
-  );
-`);
-
-// ─── OCUPACION ────────────────────────────────────────────────────────────────
-app.get('/api/ocupacion', (req, res) => {
-  const rows = db.prepare('SELECT * FROM ocupacion').all();
-  const result = {};
-  rows.forEach(r => { result[r.num] = JSON.parse(r.datos); });
-  res.json(result);
-});
-
-app.post('/api/ocupacion', (req, res) => {
-  const ocupacion = req.body;
-  const upsert = db.prepare('INSERT OR REPLACE INTO ocupacion (num, datos) VALUES (?, ?)');
-  const del = db.prepare('DELETE FROM ocupacion WHERE num = ?');
-  const transaction = db.transaction((occ) => {
-    // Primero borramos todas
-    db.prepare('DELETE FROM ocupacion').run();
-    // Insertamos las que vienen
-    Object.entries(occ).forEach(([num, datos]) => {
-      upsert.run(parseInt(num), JSON.stringify(datos));
-    });
-  });
-  transaction(ocupacion);
-  res.json({ ok: true });
-});
-
-// ─── HISTORIAL ────────────────────────────────────────────────────────────────
-app.get('/api/historial', (req, res) => {
-  const rows = db.prepare('SELECT datos FROM historial ORDER BY id DESC LIMIT 200').all();
-  res.json(rows.map(r => JSON.parse(r.datos)));
-});
-
-app.post('/api/historial', (req, res) => {
-  db.prepare('INSERT INTO historial (datos) VALUES (?)').run(JSON.stringify(req.body));
-  res.json({ ok: true });
-});
-
-app.put('/api/historial', (req, res) => {
-  const entries = req.body;
-  const transaction = db.transaction((arr) => {
-    db.prepare('DELETE FROM historial').run();
-    const ins = db.prepare('INSERT INTO historial (datos) VALUES (?)');
-    arr.forEach(e => ins.run(JSON.stringify(e)));
-  });
-  transaction(entries);
-  res.json({ ok: true });
-});
-
-// ─── TURNO ACTUAL ─────────────────────────────────────────────────────────────
-app.get('/api/turno', (req, res) => {
-  const row = db.prepare('SELECT datos FROM turno_actual WHERE id = 1').get();
-  res.json(row ? JSON.parse(row.datos) : null);
-});
-
-app.post('/api/turno', (req, res) => {
-  db.prepare('INSERT OR REPLACE INTO turno_actual (id, datos) VALUES (1, ?)').run(JSON.stringify(req.body));
-  res.json({ ok: true });
-});
-
-// ─── TURNOS CERRADOS ──────────────────────────────────────────────────────────
-app.get('/api/turnos', (req, res) => {
-  const rows = db.prepare('SELECT datos FROM turnos ORDER BY id DESC').all();
-  res.json(rows.map(r => JSON.parse(r.datos)));
-});
-
-app.post('/api/turnos', (req, res) => {
-  db.prepare('INSERT INTO turnos (datos) VALUES (?)').run(JSON.stringify(req.body));
-  res.json({ ok: true });
-});
-
-app.put('/api/turnos', (req, res) => {
-  const entries = req.body;
-  const transaction = db.transaction((arr) => {
-    db.prepare('DELETE FROM turnos').run();
-    const ins = db.prepare('INSERT INTO turnos (datos) VALUES (?)');
-    arr.forEach(e => ins.run(JSON.stringify(e)));
-  });
-  transaction(entries);
-  res.json({ ok: true });
-});
-
-// ─── PRODUCTOS ────────────────────────────────────────────────────────────────
-app.get('/api/productos', (req, res) => {
-  const row = db.prepare('SELECT datos FROM productos WHERE id = 1').get();
-  res.json(row ? JSON.parse(row.datos) : null);
-});
-
-app.post('/api/productos', (req, res) => {
-  db.prepare('INSERT OR REPLACE INTO productos (id, datos) VALUES (1, ?)').run(JSON.stringify(req.body));
-  res.json({ ok: true });
-});
-
-// ─── CONFIG ───────────────────────────────────────────────────────────────────
-app.get('/api/config', (req, res) => {
-  const row = db.prepare("SELECT valor FROM config WHERE clave = 'main'").get();
-  res.json(row ? JSON.parse(row.valor) : null);
-});
-
-app.post('/api/config', (req, res) => {
-  db.prepare("INSERT OR REPLACE INTO config (clave, valor) VALUES ('main', ?)").run(JSON.stringify(req.body));
-  res.json({ ok: true });
-});
-
-// ─── CAJA ─────────────────────────────────────────────────────────────────────
-app.get('/api/caja', (req, res) => {
-  const row = db.prepare('SELECT datos FROM caja WHERE id = 1').get();
-  res.json(row ? JSON.parse(row.datos) : null);
-});
-
-app.post('/api/caja', (req, res) => {
-  db.prepare('INSERT OR REPLACE INTO caja (id, datos) VALUES (1, ?)').run(JSON.stringify(req.body));
-  res.json({ ok: true });
-});
-
-// ─── DIAS ─────────────────────────────────────────────────────────────────────
-app.get('/api/dias', (req, res) => {
-  const rows = db.prepare('SELECT fecha, datos FROM dias ORDER BY fecha DESC LIMIT 30').all();
-  const result = {};
-  rows.forEach(r => { result[r.fecha] = JSON.parse(r.datos); });
-  res.json(result);
-});
-
-app.post('/api/dias', (req, res) => {
-  const { fecha, datos } = req.body;
-  db.prepare('INSERT OR REPLACE INTO dias (fecha, datos) VALUES (?, ?)').run(fecha, JSON.stringify(datos));
-  res.json({ ok: true });
-});
-
-// ─── LOG DE ACTIVIDAD ────────────────────────────────────────────────────────
-app.get('/api/activitylog', (req, res) => {
-  const row = db.prepare('SELECT datos FROM log WHERE id = 1').get();
-  res.json(row ? JSON.parse(row.datos) : []);
-});
-
-app.post('/api/activitylog', (req, res) => {
-  db.prepare('INSERT OR REPLACE INTO log (id, datos) VALUES (1, ?)').run(JSON.stringify(req.body));
-  res.json({ ok: true });
-});
-
-// ─── GUARDAR ARCHIVO EN REPORTES DIARIOS ──────────────────────────────────────
-app.post('/api/guardar-archivo', (req, res) => {
-  try {
-    const { nombre, contenido } = req.body;
-    const dir = path.join(__dirname, 'public', 'reportes diarios');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, nombre), contenido, 'utf8');
-    res.json({ ok: true });
-  } catch(e) {
-    console.error('Error guardando archivo:', e);
-    res.status(500).json({ error: e.message });
+  if (!motelsExists) {
+    console.log('⚙️  Migrando esquema a Phase 2 (multi-tenant)...');
+    await pool.query(`
+      DROP TABLE IF EXISTS
+        inv_salidas, inv_entradas, inv_productos, inv_proveedores, inv_categorias,
+        asientos_contables, cuentas_contables, mov_inventario, inventario,
+        historial, turnos, turno_actual, caja, log, pms_productos,
+        ocupacion, dias, config
+      CASCADE;
+    `);
   }
+
+  // ── Tablas de identidad / multi-tenant ────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS motels (
+      id             SERIAL  PRIMARY KEY,
+      nombre         TEXT    NOT NULL,
+      direccion      TEXT,
+      plan           TEXT    DEFAULT 'promo',
+      activo         BOOLEAN DEFAULT true,
+      fecha_registro TEXT    DEFAULT (CURRENT_DATE::TEXT)
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id            SERIAL  PRIMARY KEY,
+      motel_id      INTEGER REFERENCES motels(id),
+      email         TEXT    NOT NULL UNIQUE,
+      password_hash TEXT    NOT NULL,
+      nombre        TEXT    NOT NULL,
+      rol           TEXT    NOT NULL DEFAULT 'recepcionista',
+      activo        BOOLEAN DEFAULT true,
+      created_at    TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // ── Tablas singleton (una fila por motel) ─────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS turno_actual (
+      motel_id  INTEGER PRIMARY KEY REFERENCES motels(id),
+      datos     TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS pms_productos (
+      motel_id  INTEGER PRIMARY KEY REFERENCES motels(id),
+      datos     TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS caja (
+      motel_id  INTEGER PRIMARY KEY REFERENCES motels(id),
+      datos     TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS log (
+      motel_id  INTEGER PRIMARY KEY REFERENCES motels(id),
+      datos     TEXT
+    );
+  `);
+
+  // ── Tablas con PK compuesta ───────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ocupacion (
+      motel_id  INTEGER NOT NULL REFERENCES motels(id),
+      num       INTEGER NOT NULL,
+      datos     TEXT,
+      PRIMARY KEY (motel_id, num)
+    );
+
+    CREATE TABLE IF NOT EXISTS config (
+      motel_id  INTEGER NOT NULL REFERENCES motels(id),
+      clave     TEXT    NOT NULL,
+      valor     TEXT,
+      PRIMARY KEY (motel_id, clave)
+    );
+
+    CREATE TABLE IF NOT EXISTS dias (
+      motel_id  INTEGER NOT NULL REFERENCES motels(id),
+      fecha     TEXT    NOT NULL,
+      datos     TEXT,
+      PRIMARY KEY (motel_id, fecha)
+    );
+  `);
+
+  // ── Tablas de historial / operaciones ────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS historial (
+      id        SERIAL  PRIMARY KEY,
+      motel_id  INTEGER NOT NULL REFERENCES motels(id),
+      datos     TEXT,
+      fecha     TEXT DEFAULT (CURRENT_DATE::TEXT)
+    );
+
+    CREATE TABLE IF NOT EXISTS turnos (
+      id        SERIAL  PRIMARY KEY,
+      motel_id  INTEGER NOT NULL REFERENCES motels(id),
+      datos     TEXT,
+      fecha     TEXT DEFAULT (CURRENT_DATE::TEXT)
+    );
+  `);
+
+  // ── Contabilidad ──────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cuentas_contables (
+      motel_id  INTEGER NOT NULL REFERENCES motels(id),
+      codigo    TEXT    NOT NULL,
+      nombre    TEXT    NOT NULL,
+      tipo      TEXT    NOT NULL,
+      PRIMARY KEY (motel_id, codigo)
+    );
+
+    CREATE TABLE IF NOT EXISTS asientos_contables (
+      id           SERIAL  PRIMARY KEY,
+      motel_id     INTEGER NOT NULL REFERENCES motels(id),
+      fecha        TEXT    NOT NULL,
+      ts           BIGINT  NOT NULL,
+      concepto     TEXT    NOT NULL,
+      cuenta_debe  TEXT    NOT NULL,
+      cuenta_haber TEXT    NOT NULL,
+      monto        REAL    NOT NULL,
+      referencia   TEXT,
+      ref_id       TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_asientos_motel_fecha
+      ON asientos_contables(motel_id, fecha);
+  `);
+
+  // ── Inventario legacy PMS ─────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS inventario (
+      motel_id    INTEGER NOT NULL REFERENCES motels(id),
+      producto_id INTEGER NOT NULL,
+      nombre      TEXT    NOT NULL,
+      precio      REAL    NOT NULL,
+      almacen     INTEGER NOT NULL DEFAULT 0,
+      nevera      INTEGER NOT NULL DEFAULT 0,
+      vitrina     INTEGER NOT NULL DEFAULT 0,
+      vendido     INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (motel_id, producto_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mov_inventario (
+      id          SERIAL  PRIMARY KEY,
+      motel_id    INTEGER NOT NULL REFERENCES motels(id),
+      ts          BIGINT  NOT NULL,
+      producto_id INTEGER NOT NULL,
+      tipo        TEXT    NOT NULL,
+      cantidad    INTEGER NOT NULL,
+      nota        TEXT,
+      monto       REAL    DEFAULT 0,
+      metodo_pago TEXT
+    );
+  `);
+
+  // ── Módulo almacén (inv_) ─────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS inv_categorias (
+      id        SERIAL  PRIMARY KEY,
+      motel_id  INTEGER NOT NULL REFERENCES motels(id),
+      nombre    TEXT    NOT NULL,
+      UNIQUE (motel_id, nombre)
+    );
+
+    CREATE TABLE IF NOT EXISTS inv_proveedores (
+      id         SERIAL  PRIMARY KEY,
+      motel_id   INTEGER NOT NULL REFERENCES motels(id),
+      nombre     TEXT    NOT NULL,
+      contacto   TEXT,
+      telefono   TEXT,
+      email      TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS inv_productos (
+      id              SERIAL  PRIMARY KEY,
+      motel_id        INTEGER NOT NULL REFERENCES motels(id),
+      nombre          TEXT    NOT NULL,
+      descripcion     TEXT,
+      categoria_id    INTEGER REFERENCES inv_categorias(id),
+      precio_compra   REAL    DEFAULT 0,
+      precio_venta    REAL    DEFAULT 0,
+      stock_actual    INTEGER DEFAULT 0,
+      stock_almacen   INTEGER DEFAULT 0,
+      stock_nevera    INTEGER DEFAULT 0,
+      stock_vitrina   INTEGER DEFAULT 0,
+      stock_minimo    INTEGER DEFAULT 5,
+      pms_legacy_id   INTEGER,
+      created_at      TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS inv_entradas (
+      id              SERIAL  PRIMARY KEY,
+      motel_id        INTEGER NOT NULL REFERENCES motels(id),
+      producto_id     INTEGER NOT NULL REFERENCES inv_productos(id),
+      proveedor_id    INTEGER REFERENCES inv_proveedores(id),
+      cantidad        INTEGER NOT NULL,
+      precio_unitario REAL    DEFAULT 0,
+      fecha           TEXT    DEFAULT (CURRENT_DATE::TEXT),
+      notas           TEXT,
+      created_at      TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS inv_salidas (
+      id              SERIAL  PRIMARY KEY,
+      motel_id        INTEGER NOT NULL REFERENCES motels(id),
+      producto_id     INTEGER NOT NULL REFERENCES inv_productos(id),
+      cantidad        INTEGER NOT NULL,
+      precio_unitario REAL    DEFAULT 0,
+      tipo            TEXT    DEFAULT 'venta',
+      cliente         TEXT,
+      fecha           TEXT    DEFAULT (CURRENT_DATE::TEXT),
+      notas           TEXT,
+      created_at      TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // ── Cobros mensuales (comisión 0.5%) ─────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cobros (
+      id         SERIAL  PRIMARY KEY,
+      motel_id   INTEGER NOT NULL REFERENCES motels(id),
+      mes        TEXT    NOT NULL,
+      ingresos   REAL    DEFAULT 0,
+      comision   REAL    DEFAULT 0,
+      pagado     BOOLEAN DEFAULT false,
+      fecha_pago TEXT,
+      notas      TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE (motel_id, mes)
+    );
+  `);
+
+  console.log('✅ Esquema multi-tenant listo');
+
+  // ── Seed: crear Motel 23 + superadmin si no existen ──────────────────────
+  const { rows: [{ c }] } = await pool.query('SELECT COUNT(*) AS c FROM motels');
+  if (parseInt(c) === 0) {
+    const bcrypt = require('bcrypt');
+    const hash   = await bcrypt.hash('motel23', 10);
+
+    const { rows: [motel] } = await pool.query(
+      `INSERT INTO motels (nombre, direccion) VALUES ('Motel 23', 'Mi dirección') RETURNING id`
+    );
+    const motelId = motel.id;
+
+    await pool.query(
+      `INSERT INTO users (motel_id, email, password_hash, nombre, rol)
+       VALUES ($1, 'admin@motel23.com', $2, 'Administrador', 'superadmin')`,
+      [motelId, hash]
+    );
+
+    // Seed cuentas contables para Motel 23
+    const cuentas = [
+      ['1001','Caja Efectivo','activo'],    ['1002','Caja Digital (QR)','activo'],
+      ['4001','Habitaciones','ingreso'],    ['4002','Minibar','ingreso'],
+      ['4003','Vitrina','ingreso'],         ['4004','Recargo QR','ingreso'],
+      ['5001','Gastos Operativos','gasto'], ['5002','Consumo Personal','gasto'],
+      ['5003','Consumo VIP','gasto'],       ['3001','Caja Inicial','capital'],
+      ['1003','Caja Bebidas','activo'],     ['1004','Caja Vitrina','activo'],
+      ['6001','Retiros Bebidas','gasto'],   ['6002','Retiros Vitrina','gasto'],
+    ];
+    for (const [codigo, nombre, tipo] of cuentas) {
+      await pool.query(
+        `INSERT INTO cuentas_contables (motel_id, codigo, nombre, tipo) VALUES ($1, $2, $3, $4)`,
+        [motelId, codigo, nombre, tipo]
+      );
+    }
+
+    // Seed categorías de inventario para Motel 23
+    const cats = [
+      '🍺 Bebidas Alcohólicas', '🥤 Refrescos', '⚡ Energizantes',
+      '🍟 Snacks', '💊 Farmacia / Adultos', '🧴 Higiene',
+      '🛏️ Lencería', '🧹 Limpieza', '🔧 Mantenimiento', '📦 Otros'
+    ];
+    for (const cat of cats) {
+      await pool.query(
+        `INSERT INTO inv_categorias (motel_id, nombre) VALUES ($1, $2)`,
+        [motelId, cat]
+      );
+    }
+
+    console.log('');
+    console.log('🔑 Usuario inicial creado:');
+    console.log('   Email:      admin@motel23.com');
+    console.log('   Contraseña: motel23');
+    console.log('   ⚠️  Cambia la contraseña después del primer login.');
+    console.log('');
+  }
+
+  console.log('✅ Base de datos inicializada');
+}
+
+// ─── RUTAS ────────────────────────────────────────────────────────────────────
+const { requireAuth, requireAuthHtml, requireSuperadminHtml } = registerAuthRoutes({ app, db: pool });
+
+registerEstadoRoutes({ app, db: pool, requireAuth });
+registerInventarioApiRoutes({ app, db: pool, requireAuth });
+registerReportesRoutes({ app, fs, path, puppeteer, baseDir: __dirname, requireAuth });
+registerContabilidadRoutes({ app, db: pool, requireAuth });
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.use('/almacen',           require('./inventario/routes/dashboard'));
+app.use('/almacen/productos', require('./inventario/routes/productos'));
+app.use('/almacen/entradas',  require('./inventario/routes/entradas'));
+app.use('/almacen/salidas',   require('./inventario/routes/salidas'));
+app.use('/almacen/reportes',  require('./inventario/routes/reportes'));
+
+app.get('/superadmin', requireAuthHtml, requireSuperadminHtml, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'superadmin.html'));
 });
 
-// ─── ARCHIVOS ESTÁTICOS ──────────────────────────────────────────────────────
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.static(__dirname));
 
-// ─── ARRANCAR SERVIDOR ────────────────────────────────────────────────────────
-const PORT = 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('');
-  console.log('🦋 Motel 23 corriendo en:');
-  console.log('   http://localhost:3000  (esta PC)');
-  console.log('');
-  console.log('   Para acceder desde celular u otra PC,');
-  console.log('   usa la IP de esta computadora + :3000');
-  console.log('');
-});
+// ─── ARRANCAR ─────────────────────────────────────────────────────────────────
+const PORT = parseInt(process.env.PORT, 10) || 3001;
+
+// Capturar errores no controlados para que sean visibles
+process.on('uncaughtException',  err => { console.error('❌ UNCAUGHT:', err); });
+process.on('unhandledRejection', err => { console.error('❌ REJECTION:', err); });
+
+initDb()
+  .then(() => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log('');
+      console.log('🦋 Motel 23 SaaS corriendo en:');
+      console.log(`   http://localhost:${PORT}  (esta PC)`);
+      console.log('');
+      console.log('   Para acceder desde celular u otra PC,');
+      console.log(`   usa la IP de esta computadora + :${PORT}`);
+      console.log('');
+    });
+    server.on('error', err => {
+      console.error('❌ Error del servidor HTTP:', err.code, err.message);
+      if (err.code === 'EADDRINUSE') {
+        console.error(`   El puerto ${PORT} está ocupado por otro proceso.`);
+        console.error('   Cerrá todos los procesos Node y volvé a intentar.');
+      }
+      process.exit(1);
+    });
+  })
+  .catch(err => {
+    console.error('❌ Error iniciando base de datos:', err.message);
+    process.exit(1);
+  });

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel Superadmin — Motel 23</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b0f1a; --surface: #111827; --surface2: #1a2235; --surface3: #212c42;
+  --border: #263044; --border2: #344060;
+  --text: #eef2ff; --text2: #8ba4c8; --text3: #4a6280;
+  --gold: #f59e0b; --green: #4ade80; --red: #f87171; --blue: #38bdf8;
+  --radius: 12px; --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Outfit',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 32px; height:60px;
+  background:rgba(11,15,26,0.95); backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100;
+}
+.logo { display:flex; align-items:center; gap:12px; text-decoration:none; }
+.logo-mark { width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg,#f59e0b,#d97706); display:flex; align-items:center; justify-content:center; font-size:16px; }
+.logo-text { font-size:1.05rem; font-weight:700; color:var(--text); }
+.logo-text span { color:var(--gold); }
+.badge { background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.3); color:var(--gold); padding:3px 10px; border-radius:20px; font-size:0.7rem; font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-left:8px; }
+.header-right { display:flex; align-items:center; gap:10px; }
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:var(--radius-sm); border:1px solid var(--border2); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.85rem; font-weight:500; cursor:pointer; transition:all .15s; text-decoration:none; }
+.btn:hover { background:var(--surface3); color:var(--text); }
+.btn-primary { background:linear-gradient(135deg,#f59e0b,#d97706); border-color:transparent; color:#0b0f1a; font-weight:700; }
+.btn-primary:hover { opacity:.9; color:#0b0f1a; }
+.btn-danger { border-color:rgba(248,113,113,0.3); color:var(--red); }
+.btn-danger:hover { background:rgba(248,113,113,0.1); }
+
+main { max-width:1200px; margin:0 auto; padding:32px 24px; }
+h1 { font-size:1.5rem; font-weight:800; margin-bottom:6px; }
+.subtitle { color:var(--text3); font-size:0.88rem; margin-bottom:32px; }
+
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:32px; }
+.stat-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }
+.stat-label { font-size:0.72rem; color:var(--text3); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.stat-value { font-family:'JetBrains Mono',monospace; font-size:1.6rem; font-weight:600; }
+.stat-sub { font-size:0.75rem; color:var(--text3); margin-top:4px; }
+
+.section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.section-title { font-size:1rem; font-weight:700; }
+
+.mes-selector { display:flex; align-items:center; gap:10px; }
+.mes-input { background:var(--surface2); border:1px solid var(--border2); color:var(--text); padding:7px 12px; border-radius:var(--radius-sm); font-family:inherit; font-size:0.85rem; }
+
+.table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:32px; }
+table { width:100%; border-collapse:collapse; }
+th { padding:12px 16px; text-align:left; font-size:0.72rem; color:var(--text3); text-transform:uppercase; letter-spacing:1px; border-bottom:1px solid var(--border); background:var(--surface2); }
+td { padding:14px 16px; font-size:0.88rem; border-bottom:1px solid var(--border); }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:rgba(255,255,255,0.02); }
+
+.motel-name { font-weight:600; font-size:0.95rem; }
+.motel-dir { font-size:0.75rem; color:var(--text3); margin-top:2px; }
+.mono { font-family:'JetBrains Mono',monospace; }
+.tag { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:700; }
+.tag-green { background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.25); color:var(--green); }
+.tag-red { background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25); color:var(--red); }
+.tag-gold { background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.25); color:var(--gold); }
+.tag-gray { background:var(--surface2); border:1px solid var(--border2); color:var(--text3); }
+
+/* MODAL */
+.overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:500; align-items:center; justify-content:center; }
+.overlay.open { display:flex; }
+.modal { background:var(--surface); border:1px solid var(--border2); border-radius:16px; width:100%; max-width:480px; padding:28px; }
+.modal h2 { font-size:1.1rem; font-weight:700; margin-bottom:6px; }
+.modal p { color:var(--text3); font-size:0.85rem; margin-bottom:24px; }
+.form-group { margin-bottom:16px; }
+.form-label { display:block; font-size:0.8rem; color:var(--text2); margin-bottom:6px; font-weight:500; }
+.form-input { width:100%; padding:10px 14px; background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius-sm); color:var(--text); font-family:inherit; font-size:0.9rem; }
+.form-input:focus { outline:none; border-color:var(--gold); }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.form-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+.error-msg { display:none; padding:10px 14px; background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.3); border-radius:8px; color:var(--red); font-size:0.85rem; margin-top:12px; }
+
+.spinner { text-align:center; padding:40px; color:var(--text3); }
+.empty { text-align:center; padding:40px; color:var(--text3); font-size:0.9rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:16px">
+    <a href="/" class="logo">
+      <div class="logo-mark">🦋</div>
+      <div class="logo-text">MOTEL <span>23</span></div>
+    </a>
+    <span class="badge">Superadmin</span>
+  </div>
+  <div class="header-right">
+    <a href="/" class="btn">← Volver al sistema</a>
+    <button class="btn btn-danger" onclick="logout()">⏻ Salir</button>
+  </div>
+</header>
+
+<main>
+  <h1>Panel de administración</h1>
+  <p class="subtitle">Todos los moteles registrados en la plataforma.</p>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card">
+      <div class="stat-label">Moteles activos</div>
+      <div class="stat-value" id="statMoteles" style="color:var(--blue)">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Ingresos totales del mes</div>
+      <div class="stat-value" id="statIngresos" style="color:var(--green)">—</div>
+      <div class="stat-sub">Suma de todos los moteles</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tu comisión del mes</div>
+      <div class="stat-value" id="statComision" style="color:var(--gold)">—</div>
+      <div class="stat-sub">0.5% · mínimo $5 por motel</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Cobros pendientes</div>
+      <div class="stat-value" id="statPendientes" style="color:var(--red)">—</div>
+      <div class="stat-sub">Este mes</div>
+    </div>
+  </div>
+
+  <!-- Tabla de moteles -->
+  <div class="section-header">
+    <div class="section-title">🏨 Moteles</div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <div class="mes-selector">
+        <span style="font-size:0.8rem;color:var(--text3)">Mes:</span>
+        <input type="month" class="mes-input" id="mesInput" onchange="cargarDatos()">
+      </div>
+      <button class="btn btn-primary" onclick="abrirModalNuevoMotel()">+ Nuevo motel</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Motel</th>
+          <th>Registro</th>
+          <th>Usuarios</th>
+          <th>Ingresos del mes</th>
+          <th>Comisión (0.5%)</th>
+          <th>Estado pago</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tablaMoteles">
+        <tr><td colspan="8" class="spinner">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<!-- MODAL: Nuevo Motel -->
+<div class="overlay" id="modalNuevoMotel">
+  <div class="modal">
+    <h2>🏨 Registrar nuevo motel</h2>
+    <p>Se creará el motel y su usuario administrador.</p>
+    <div class="form-group">
+      <label class="form-label">Nombre del motel *</label>
+      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Motel Las Palmas">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Dirección</label>
+      <input class="form-input" id="nm-direccion" type="text" placeholder="Dirección del motel">
+    </div>
+    <div style="border-top:1px solid var(--border);margin:20px 0;"></div>
+    <p style="margin-bottom:16px">Usuario administrador del motel:</p>
+    <div class="form-group">
+      <label class="form-label">Nombre del admin *</label>
+      <input class="form-input" id="nm-nombre-admin" type="text" placeholder="Nombre completo">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Email *</label>
+        <input class="form-input" id="nm-email" type="email" placeholder="admin@motel.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contraseña *</label>
+        <input class="form-input" id="nm-password" type="password" placeholder="Mínimo 6 caracteres">
+      </div>
+    </div>
+    <div class="error-msg" id="nm-error"></div>
+    <div class="form-footer">
+      <button class="btn" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn btn-primary" id="nm-btn" onclick="crearMotel()">Crear motel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let motelsData  = [];
+let cobrosData  = [];
+const mesInput  = document.getElementById('mesInput');
+
+// Mes actual por defecto
+const hoy = new Date();
+mesInput.value = hoy.toISOString().slice(0, 7);
+
+async function cargarDatos() {
+  const mes = mesInput.value;
+
+  try {
+    const [motels, cobros] = await Promise.all([
+      fetch('/api/superadmin/moteles').then(r => r.json()),
+      fetch(`/api/superadmin/cobros?mes=${mes}`).then(r => r.json()),
+    ]);
+
+    motelsData = Array.isArray(motels) ? motels : [];
+    cobrosData = Array.isArray(cobros) ? cobros : [];
+    renderTabla();
+    renderStats();
+  } catch (e) {
+    document.getElementById('tablaMoteles').innerHTML =
+      `<tr><td colspan="8" class="empty">Error cargando datos: ${e.message}</td></tr>`;
+  }
+}
+
+function renderStats() {
+  const activos       = motelsData.filter(m => m.activo).length;
+  const totalIngresos = cobrosData.reduce((s, c) => s + Number(c.ingresos || 0), 0);
+  const totalComision = cobrosData.reduce((s, c) => s + Number(c.comision || 0), 0);
+  const pendientes    = cobrosData.filter(c => !c.pagado).length;
+
+  document.getElementById('statMoteles').textContent    = activos;
+  document.getElementById('statIngresos').textContent   = 'Bs ' + totalIngresos.toLocaleString('es-BO', { minimumFractionDigits: 0 });
+  document.getElementById('statComision').textContent   = '$' + totalComision.toFixed(2);
+  document.getElementById('statPendientes').textContent = pendientes;
+}
+
+function renderTabla() {
+  const tbody = document.getElementById('tablaMoteles');
+  if (!motelsData.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No hay moteles registrados aún.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = motelsData.map(m => {
+    const cobro   = cobrosData.find(c => c.motel_id === m.id) || {};
+    const ingresos = Number(cobro.ingresos || 0);
+    const comision = Number(cobro.comision || 0);
+    const pagado   = cobro.pagado;
+
+    const estadoTag = pagado
+      ? `<span class="tag tag-green">✓ Pagado</span>`
+      : comision > 0
+        ? `<span class="tag tag-red">⚠ Pendiente</span>`
+        : `<span class="tag tag-gray">— Sin datos</span>`;
+
+    const accionPago = comision > 0
+      ? pagado
+        ? `<button class="btn" style="font-size:0.75rem;padding:5px 10px" onclick="marcarPago(${m.id}, false)">↩ Desmarcar</button>`
+        : `<button class="btn btn-primary" style="font-size:0.75rem;padding:5px 10px" onclick="marcarPago(${m.id}, true)">✓ Marcar pagado</button>`
+      : '';
+
+    const activoTag = m.activo
+      ? `<span class="tag tag-green" style="font-size:0.65rem">Activo</span>`
+      : `<span class="tag tag-red" style="font-size:0.65rem">Inactivo</span>`;
+
+    return `<tr>
+      <td><span class="mono" style="color:var(--text3)">#${m.id}</span></td>
+      <td>
+        <div class="motel-name">${esc(m.nombre)} ${activoTag}</div>
+        <div class="motel-dir">${esc(m.direccion || '—')}</div>
+      </td>
+      <td><span class="mono" style="font-size:0.8rem;color:var(--text3)">${m.fecha_registro || '—'}</span></td>
+      <td style="color:var(--text2)">${m.usuarios || 0}</td>
+      <td><span class="mono" style="color:var(--green)">Bs ${ingresos.toLocaleString('es-BO',{minimumFractionDigits:0})}</span></td>
+      <td>
+        <span class="mono" style="color:var(--gold)">$${comision.toFixed(2)}</span>
+        <div style="font-size:0.7rem;color:var(--text3);margin-top:2px">mín $5/mes</div>
+      </td>
+      <td>${estadoTag}${cobro.fecha_pago ? `<div style="font-size:0.7rem;color:var(--text3);margin-top:4px">${cobro.fecha_pago}</div>` : ''}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        ${accionPago}
+        <button class="btn btn-danger" style="font-size:0.75rem;padding:5px 10px" onclick="toggleActivo(${m.id}, ${!m.activo})">${m.activo ? '⏸ Pausar' : '▶ Activar'}</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function marcarPago(motelId, pagado) {
+  const mes = mesInput.value;
+  await fetch('/api/superadmin/cobros/marcar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ motel_id: motelId, mes, pagado })
+  });
+  cargarDatos();
+}
+
+async function toggleActivo(motelId, activo) {
+  await fetch('/api/superadmin/motel/toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ motel_id: motelId, activo })
+  });
+  cargarDatos();
+}
+
+function abrirModalNuevoMotel() {
+  document.getElementById('modalNuevoMotel').classList.add('open');
+}
+function cerrarModal() {
+  document.getElementById('modalNuevoMotel').classList.remove('open');
+  document.getElementById('nm-error').style.display = 'none';
+}
+
+async function crearMotel() {
+  const btn   = document.getElementById('nm-btn');
+  const errEl = document.getElementById('nm-error');
+  errEl.style.display = 'none';
+
+  const body = {
+    nombre:        document.getElementById('nm-nombre').value.trim(),
+    direccion:     document.getElementById('nm-direccion').value.trim(),
+    nombre_admin:  document.getElementById('nm-nombre-admin').value.trim(),
+    email_admin:   document.getElementById('nm-email').value.trim(),
+    password_admin: document.getElementById('nm-password').value,
+  };
+
+  if (!body.nombre || !body.nombre_admin || !body.email_admin || !body.password_admin) {
+    errEl.textContent   = 'Completá todos los campos obligatorios (*)';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = 'Creando...';
+
+  try {
+    const r    = await fetch('/api/superadmin/motel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+
+    if (r.ok) {
+      cerrarModal();
+      // Limpiar campos
+      ['nm-nombre','nm-direccion','nm-nombre-admin','nm-email','nm-password'].forEach(id => {
+        document.getElementById(id).value = '';
+      });
+      cargarDatos();
+    } else {
+      errEl.textContent   = data.error || 'Error al crear el motel';
+      errEl.style.display = 'block';
+    }
+  } catch {
+    errEl.textContent   = 'Sin conexión con el servidor';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Crear motel';
+  }
+}
+
+async function logout() {
+  await fetch('/api/logout', { method: 'POST' });
+  location.href = '/';
+}
+
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Arrancar
+cargarDatos();
+</script>
+</body>
+</html>

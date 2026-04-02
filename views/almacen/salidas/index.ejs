@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= titulo %> — Inventario</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body{background:#f5f6fa;font-family:'Segoe UI',system-ui,sans-serif}
+    .card{border-radius:10px}
+    .table th{font-size:.82rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+    .table td{font-size:.9rem}
+    .badge-tipo { font-size:.78rem; padding: 4px 8px; border-radius: 6px; }
+    .tipo-venta { background:#dc3545; color:#fff }
+    .tipo-venta_vitrina { background:#e85d04; color:#fff }
+    .tipo-carga_almacen { background:#198754; color:#fff }
+    .tipo-almacen_a_nevera { background:#0d6efd; color:#fff }
+    .tipo-almacen_a_vitrina { background:#6f42c1; color:#fff }
+    .tipo-devolucion { background:#20c997; color:#fff }
+    .tipo-devolucion_vitrina { background:#0dcaf0; color:#000 }
+    .tipo-consumo_personal { background:#fd7e14; color:#fff }
+    .tipo-consumo_vip { background:#ffc107; color:#000 }
+  </style>
+</head>
+<body>
+  <%- include('../_navbar') %>
+  <main class="container-fluid py-4 px-4">
+    <h4 class="fw-bold mb-4"><i class="bi bi-arrow-left-right me-2 text-primary"></i>Historial de Movimientos</h4>
+
+    <!-- Filtros -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+          <div class="col-auto">
+            <label class="form-label small fw-semibold">Tipo</label>
+            <select name="tipo" class="form-select form-select-sm">
+              <option value="">Todos</option>
+              <% tipos.forEach(t => { %>
+                <option value="<%= t %>" <%= tipoFiltro === t ? 'selected' : '' %>><%= t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small fw-semibold">Desde</label>
+            <input type="date" name="desde" class="form-control form-control-sm" value="<%= desde || '' %>">
+          </div>
+          <div class="col-auto">
+            <label class="form-label small fw-semibold">Hasta</label>
+            <input type="date" name="hasta" class="form-control form-control-sm" value="<%= hasta || '' %>">
+          </div>
+          <div class="col-auto">
+            <button class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+          </div>
+          <div class="col-auto">
+            <a href="<%= baseUrl %>/salidas" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x me-1"></i>Limpiar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Fecha / Hora</th>
+                <th>Producto</th>
+                <th>Tipo</th>
+                <th class="text-center">Cantidad</th>
+                <th class="text-end">Monto</th>
+                <th>Método</th>
+                <th>Nota</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (movimientos.length === 0) { %>
+                <tr><td colspan="7" class="text-center text-muted py-5">Sin movimientos registrados</td></tr>
+              <% } %>
+              <% movimientos.forEach(m => { %>
+                <%
+                  const tipoLabels = {
+                    'venta': '🍺 Venta Minibar',
+                    'venta_vitrina': '🏪 Venta Vitrina',
+                    'carga_almacen': '📦 Carga Almacén',
+                    'almacen_a_nevera': '❄️ → Nevera',
+                    'almacen_a_vitrina': '🏪 → Vitrina',
+                    'devolucion': '↩️ Devolución',
+                    'devolucion_vitrina': '↩️ Dev. Vitrina',
+                    'consumo_personal': '👷 Personal',
+                    'consumo_vip': '👑 V.I.P.'
+                  };
+                  const label = tipoLabels[m.tipo] || m.tipo;
+                %>
+                <%
+                  const metodoLabels = {
+                    'habitacion': '🏨 Habitación',
+                    'efectivo': '💵 Efectivo',
+                    'vip': '👑 Gratis',
+                    'qr': '📱 QR'
+                  };
+                  const metodoLabel = m.metodo_pago ? (metodoLabels[m.metodo_pago] || m.metodo_pago) : '—';
+                %>
+                <tr>
+                  <td class="text-muted small"><%= m.fecha_fmt %></td>
+                  <td class="fw-semibold"><%= m.producto_nombre %></td>
+                  <td><span class="badge badge-tipo tipo-<%= m.tipo %>"><%= label %></span></td>
+                  <td class="text-center"><span class="badge bg-dark fs-6"><%= m.cantidad %></span></td>
+                  <td class="text-end"><%= m.monto ? `Bs ${m.monto.toFixed(2)}` : '—' %></td>
+                  <td class="small"><%= metodoLabel %></td>
+                  <td class="text-muted small"><%= m.nota || '—' %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-muted small mt-3"><i class="bi bi-info-circle me-1"></i>Mostrando los últimos 200 movimientos. Usa los filtros para buscar registros específicos.</p>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

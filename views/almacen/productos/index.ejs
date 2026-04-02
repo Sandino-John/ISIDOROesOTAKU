@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= titulo %> — Inventario</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>body{background:#f5f6fa;font-family:'Segoe UI',system-ui,sans-serif}.card{border-radius:10px}.table th{font-size:.82rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px}.table td{font-size:.9rem}</style>
+</head>
+<body>
+  <%- include('../_navbar') %>
+  <main class="container-fluid py-4 px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="fw-bold mb-0"><i class="bi bi-box me-2"></i>Productos</h4>
+      <a href="<%= baseUrl %>/productos/nuevo" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Nuevo Producto</a>
+    </div>
+    <form method="get" class="row g-2 mb-4">
+      <div class="col-sm-6 col-md-4">
+        <input type="text" name="buscar" class="form-control" placeholder="Buscar por nombre..." value="<%= buscar || '' %>">
+      </div>
+      <div class="col-sm-4 col-md-3">
+        <select name="categoria" class="form-select">
+          <option value="">Todas las categorías</option>
+          <% categorias.forEach(c => { %>
+            <option value="<%= c.id %>" <%= categoria == c.id ? 'selected' : '' %>><%= c.nombre %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search me-1"></i>Buscar</button>
+        <a href="<%= baseUrl %>/productos" class="btn btn-outline-secondary ms-1"><i class="bi bi-x-lg"></i></a>
+      </div>
+    </form>
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark">
+              <tr><th>Nombre</th><th>Categoría</th><th class="text-end">P. Compra</th><th class="text-end">P. Venta</th><th class="text-center">Últ. Entrada</th><th class="text-center">Almacén</th><th class="text-center">Nevera/Vitrina</th><th class="text-center">Total</th><th class="text-center">Mín.</th><th class="text-center">Acciones</th></tr>
+            </thead>
+            <tbody>
+              <% if (productos.length === 0) { %>
+                <tr><td colspan="10" class="text-center text-muted py-5">No hay productos registrados.</td></tr>
+              <% } %>
+              <% productos.forEach(p => { %>
+                <tr class="<%= p.stock_actual <= p.stock_minimo ? 'table-warning' : '' %>">
+                  <td class="fw-semibold"><%= p.nombre %>
+                    <% if (p.stock_actual === 0) { %><span class="badge bg-danger ms-1">Sin stock</span><% } else if (p.stock_actual <= p.stock_minimo) { %><span class="badge bg-warning text-dark ms-1">Stock bajo</span><% } %>
+                  </td>
+                  <td><%= p.categoria_nombre || '—' %></td>
+                  <td class="text-end">Bs <%= p.precio_compra.toFixed(2) %></td>
+                  <td class="text-end">Bs <%= p.precio_venta.toFixed(2) %></td>
+                  <td class="text-center text-muted"><%= p.ultima_entrada != null ? p.ultima_entrada : '—' %></td>
+                  <td class="text-center"><%= p.stock_almacen %></td>
+                  <td class="text-center"><% const catsBebida = [8,9,10]; if (catsBebida.includes(p.categoria_id)) { %><%= p.stock_nevera %> <small class="text-muted">🧊</small><% } else { %><%= p.stock_vitrina || 0 %> <small class="text-muted">🏪</small><% } %></td>
+                  <td class="text-center"><span class="badge <%= p.stock_actual === 0 ? 'bg-danger' : p.stock_actual <= p.stock_minimo ? 'bg-warning text-dark' : 'bg-success' %> fs-6 px-3"><%= p.stock_actual %></span></td>
+                  <td class="text-center text-muted"><%= p.stock_minimo %></td>
+                  <td class="text-center">
+                    <a href="<%= baseUrl %>/productos/<%= p.id %>/editar" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+                    <form method="post" action="<%= baseUrl %>/productos/<%= p.id %>/eliminar" class="d-inline" onsubmit="return confirm('¿Eliminar <%= p.nombre %>?')">
+                      <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

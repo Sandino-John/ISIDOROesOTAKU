@@ -1,17 +1,27 @@
 {
-  "name": "motel23",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "motel23codexclaude-saas",
+  "version": "2.0.0",
+  "description": "Sistema de gestión hotelera SaaS — PostgreSQL",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
-    "express": "^5.2.1"
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "ejs": "^5.0.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.13.1",
+    "puppeteer": "^24.40.0"
   }
 }
