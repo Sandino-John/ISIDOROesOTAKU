@@ -32,7 +32,7 @@ module.exports = function registerReportesRoutes({ app, fs, path, puppeteer, bas
         const pdfPath = path.resolve(reportsDir, pdfName);
         if (!pdfPath.startsWith(reportsDir + path.sep)) throw badRequest('Ruta PDF inválida');
 
-        browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
+        browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-gpu'] });
         const page = await browser.newPage();
         await page.setContent(String(contenido ?? ''), { waitUntil: 'networkidle0' });
         await page.pdf({
