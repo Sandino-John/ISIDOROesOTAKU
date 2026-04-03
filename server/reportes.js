@@ -1,15 +1,27 @@
 const { execSync } = require('child_process');
 const { badRequest, handleRouteError, readString } = require('./http-utils');
 
-// En producción (Railway) buscamos el chromium del sistema
+// Buscar Chrome/Chromium en el sistema
 function getChromiumPath() {
   if (process.env.PUPPETEER_EXECUTABLE_PATH) return process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (process.env.NODE_ENV === 'production') {
-    for (const cmd of ['which chromium', 'which chromium-browser', 'which google-chrome']) {
-      try { return execSync(cmd, { encoding: 'utf8' }).trim(); } catch {}
-    }
+
+  // Linux (Railway/producción)
+  for (const cmd of ['which chromium', 'which chromium-browser', 'which google-chrome']) {
+    try { return execSync(cmd, { encoding: 'utf8' }).trim(); } catch {}
   }
-  return undefined; // desarrollo local: puppeteer usa su Chrome bundled
+
+  // Windows (desarrollo local)
+  const winPaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    process.env.LOCALAPPDATA && process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe',
+  ].filter(Boolean);
+  const fs = require('fs');
+  for (const p of winPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  return undefined;
 }
 
 module.exports = function registerReportesRoutes({ app, fs, path, puppeteer, baseDir, requireAuth }) {

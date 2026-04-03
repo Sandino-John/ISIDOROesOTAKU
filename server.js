@@ -2,7 +2,7 @@ require('dotenv').config();
 const express    = require('express');
 const path       = require('path');
 const fs         = require('fs');
-const puppeteer  = require('puppeteer');
+const puppeteer  = require('puppeteer-core');
 const cookieParser = require('cookie-parser');
 const pool       = require('./db/pool');
 const { registerAuthRoutes }          = require('./server/auth');
@@ -263,7 +263,7 @@ async function initDb() {
   // ── Seed: crear Motel 23 + superadmin si no existen ──────────────────────
   const { rows: [{ c }] } = await pool.query('SELECT COUNT(*) AS c FROM motels');
   if (parseInt(c) === 0) {
-    const bcrypt = require('bcrypt');
+    const bcrypt = require('bcryptjs');
     const hash   = await bcrypt.hash('motel23', 10);
 
     const { rows: [motel] } = await pool.query(
