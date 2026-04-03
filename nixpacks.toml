@@ -1,0 +1,8 @@
+# Configuración para Railway/Nixpacks
+# Instala Chromium del sistema en vez de que puppeteer lo descargue
+
+[phases.setup]
+nixPkgs = ["chromium"]
+
+[variables]
+PUPPETEER_SKIP_DOWNLOAD = "true"

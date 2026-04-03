@@ -1,4 +1,16 @@
+const { execSync } = require('child_process');
 const { badRequest, handleRouteError, readString } = require('./http-utils');
+
+// En producción (Railway) buscamos el chromium del sistema
+function getChromiumPath() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) return process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (process.env.NODE_ENV === 'production') {
+    for (const cmd of ['which chromium', 'which chromium-browser', 'which google-chrome']) {
+      try { return execSync(cmd, { encoding: 'utf8' }).trim(); } catch {}
+    }
+  }
+  return undefined; // desarrollo local: puppeteer usa su Chrome bundled
+}
 
 module.exports = function registerReportesRoutes({ app, fs, path, puppeteer, baseDir, requireAuth }) {
   function resolveReportFilePath(nombre) {
@@ -32,7 +44,12 @@ module.exports = function registerReportesRoutes({ app, fs, path, puppeteer, bas
         const pdfPath = path.resolve(reportsDir, pdfName);
         if (!pdfPath.startsWith(reportsDir + path.sep)) throw badRequest('Ruta PDF inválida');
 
-        browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-gpu'] });
+        const executablePath = getChromiumPath();
+        browser = await puppeteer.launch({
+          headless: 'new',
+          executablePath,
+          args: ['--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox']
+        });
         const page = await browser.newPage();
         await page.setContent(String(contenido ?? ''), { waitUntil: 'networkidle0' });
         await page.pdf({
