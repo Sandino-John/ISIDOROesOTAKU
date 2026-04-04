@@ -370,8 +370,8 @@ function printReceipt() {
     <hr>
     <div class="row"><span>Habitación:</span><span>${room.num} — ${typeNames[room.type]}</span></div>
     <div class="row"><span>Huésped:</span><span>${occ.guest}</span></div>
-    <div class="row"><span>Entrada:</span><span>${new Date(occ.checkin).toLocaleString('es-BO')}</span></div>
-    <div class="row"><span>Salida:</span><span>${new Date().toLocaleString('es-BO')}</span></div>
+    <div class="row"><span>Entrada:</span><span>${NOCTA_TIME.formatDateTime(occ.checkin)}</span></div>
+    <div class="row"><span>Salida:</span><span>${NOCTA_TIME.formatDateTime(Date.now())}</span></div>
     <div class="row"><span>Tiempo:</span><span>${formatDuration(Date.now()-occ.checkin)}</span></div>
     <hr>
     <div class="row"><span>${bill.breakdown || 'Noche completa'}</span><span>Bs ${bill.base || bill.total}</span></div>

@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const { requireAuthHtml } = require('../../server/auth');
+const { boliviaDateKey } = require('../../server/time-utils');
 
 router.use(requireAuthHtml);
 
@@ -43,7 +44,7 @@ router.post('/', async (req, res) => {
         `INSERT INTO inv_entradas (motel_id, producto_id, cantidad, precio_unitario, fecha, notas)
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [mid, producto_id, cant, parseFloat(precio_unitario) || 0,
-         fecha || new Date().toISOString().split('T')[0], notas || null]
+         fecha || boliviaDateKey(), notas || null]
       );
       await client.query(
         `UPDATE inv_productos SET

@@ -1,6 +1,7 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
+const { boliviaDateKey, boliviaMonthKey, monthRange } = require('./time-utils');
 
 const SALT_ROUNDS = 10;
 const JWT_EXPIRY  = '24h';
@@ -115,6 +116,7 @@ function registerAuthRoutes({ app, db }) {
   // ─── SUPERADMIN: panel de moteles ─────────────────────────────────────────
   app.get('/api/superadmin/moteles', requireAuth, requireSuperadmin, async (req, res) => {
     try {
+      const { start: monthStart } = monthRange();
       const motels = await db.all(`
         SELECT m.*,
           (SELECT COUNT(*) FROM users WHERE motel_id = m.id AND activo = true) AS usuarios,
@@ -123,9 +125,10 @@ function registerAuthRoutes({ app, db }) {
              FROM asientos_contables
              WHERE motel_id = m.id
                AND cuenta_haber IN ('4001','4002','4003')
-               AND fecha >= TO_CHAR(DATE_TRUNC('month', CURRENT_DATE), 'YYYY-MM-DD'))
+               AND fecha >= $1)
           AS NUMERIC), 2) AS ingresos_mes
-        FROM motels m ORDER BY m.id`
+        FROM motels m ORDER BY m.id`,
+        [monthStart]
       );
       res.json(motels);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -214,7 +217,8 @@ function registerAuthRoutes({ app, db }) {
   // ─── COBROS: estado de pagos por mes ─────────────────────────────────────
   app.get('/api/superadmin/cobros', requireAuth, requireSuperadmin, async (req, res) => {
     try {
-      const mes = req.query.mes || new Date().toISOString().slice(0, 7);
+      const mes = req.query.mes || boliviaMonthKey();
+      const { start: monthStart, end: monthEnd } = monthRange(mes);
       // Calcular ingresos del mes para cada motel
       const motels = await db.all('SELECT id FROM motels WHERE activo = true');
       const resultado = [];
@@ -226,7 +230,7 @@ function registerAuthRoutes({ app, db }) {
            WHERE motel_id = $1
              AND cuenta_haber IN ('4001','4002','4003')
              AND fecha >= $2 AND fecha < $3`,
-          [m.id, mes + '-01', nextMonth(mes) + '-01']
+          [m.id, monthStart, monthEnd]
         );
         const ing      = Number(ingresos);
         const comision = Math.max(5, ing * 0.005);
@@ -259,7 +263,7 @@ function registerAuthRoutes({ app, db }) {
     try {
       const { motel_id, mes, pagado, notas } = req.body || {};
       if (!motel_id || !mes) return res.status(400).json({ error: 'Faltan datos' });
-      const fecha_pago = pagado ? new Date().toISOString().slice(0, 10) : null;
+      const fecha_pago = pagado ? boliviaDateKey() : null;
       await db.run(
         `INSERT INTO cobros (motel_id, mes, pagado, fecha_pago, notas)
          VALUES ($1, $2, $3, $4, $5)
@@ -280,11 +284,6 @@ function registerAuthRoutes({ app, db }) {
   });
 
   return { requireAuth, requireAuthHtml, requireSuperadmin, requireSuperadminHtml };
-}
-
-function nextMonth(mes) {
-  const [y, m] = mes.split('-').map(Number);
-  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
 }
 
 module.exports = { requireAuth, requireAuthHtml, requireSuperadmin, registerAuthRoutes };

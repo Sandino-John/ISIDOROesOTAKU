@@ -303,7 +303,7 @@ function renderStockTab(type) {
         return `<div class="egreso-item">
           <div style="display:flex;flex-direction:column;flex:1;min-width:0">
             <span style="color:var(--red)">− ${m.motivo}</span>
-            <span style="font-size:0.6rem;color:var(--text3)">${new Date(m.ts).toLocaleString('es-BO')}</span>
+            <span style="font-size:0.6rem;color:var(--text3)">${NOCTA_TIME.formatDateTime(m.ts)}</span>
           </div>
           <span class="egreso-item-monto">−Bs ${m.monto}</span>
           <button class="egreso-item-del" onclick="deleteMovimiento('${type}',${realIdx})" title="Eliminar">✕</button>
@@ -355,7 +355,7 @@ function deleteMovimiento(type, idx) {
 // ─── DEPOSIT POPUP (al cerrar turno) ─────────────────────────────────────────
 function showDepositPopup(bebida, vitrina, shiftType) {
   const turnoLabel = shiftType === 'day' ? 'Día' : 'Noche';
-  const fecha = new Date().toISOString().slice(0, 10);
+  const fecha = NOCTA_TIME.operativeDateKey();
 
   let html = '<div style="padding:20px;max-width:400px">';
   html += '<h3 style="margin:0 0 16px;font-size:1.1rem;color:var(--gold)">💰 Depósito a cajas</h3>';
@@ -420,16 +420,11 @@ function doDeposit(type, cash, qr, turnoLabel, fecha) {
 let allDays = {};
 
 function todayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return NOCTA_TIME.boliviaDateKey();
 }
 
 function operativeDateKey(timestamp) {
-  const d = new Date(timestamp || Date.now());
-  if (d.getHours() < 6) {
-    d.setDate(d.getDate() - 1);
-  }
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return NOCTA_TIME.operativeDateKey(timestamp);
 }
 
 function saveDays() {
@@ -472,15 +467,15 @@ function exportDayToFile(dateKey, dayShifts) {
     resumen: { totalRecaudado: totalDay, turnos: dayShifts.length, checkouts: allEntries.length },
     turnos: dayShifts.map(sh => ({
       tipo: sh.type === 'day' ? 'Día' : 'Noche',
-      inicio: new Date(sh.start).toLocaleString('es-BO'),
-      fin: sh.end ? new Date(sh.end).toLocaleString('es-BO') : '—',
+      inicio: NOCTA_TIME.formatDateTime(sh.start),
+      fin: sh.end ? NOCTA_TIME.formatDateTime(sh.end) : '—',
       total: sh.total || 0,
       habitaciones: (sh.entries||[]).map(e => ({
         habitacion: e.roomNum,
         tipo: e.type,
         transporte: e.guest,
-        entrada: new Date(e.checkin).toLocaleString('es-BO'),
-        salida: new Date(e.checkout).toLocaleString('es-BO'),
+        entrada: NOCTA_TIME.formatDateTime(e.checkin),
+        salida: NOCTA_TIME.formatDateTime(e.checkout),
         duracion: formatDuration(e.checkout - e.checkin),
         cobro: e.breakdown || '',
         minibar: (e.minibar||[]).map(i=>`${i.name} x${i.qty} = Bs${i.price*i.qty}`).join(', ') || 'Ninguno',

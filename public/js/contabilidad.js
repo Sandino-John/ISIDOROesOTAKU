@@ -42,7 +42,7 @@ async function renderLibroDiario(desde, hasta) {
     <th>Hora</th><th>Concepto</th><th>Debe</th><th>Haber</th><th style="text-align:right">Bs</th>
   </tr></thead><tbody>`;
   for (const r of rows) {
-    const hora = new Date(r.ts).toLocaleTimeString('es-BO', {hour:'2-digit',minute:'2-digit'});
+    const hora = NOCTA_TIME.formatTime(r.ts);
     html += `<tr>
       <td style="color:var(--text3)">${hora}</td>
       <td style="font-family:Outfit,sans-serif;font-size:0.72rem">${r.concepto}</td>
@@ -234,7 +234,7 @@ async function renderLibroCaja(type, desde, hasta) {
         <th>Hora</th><th>Concepto</th><th style="text-align:right">Bs</th>
       </tr></thead><tbody>`;
     for (const r of asientosCaja) {
-      const hora = new Date(r.ts).toLocaleTimeString('es-BO', {hour:'2-digit',minute:'2-digit'});
+      const hora = NOCTA_TIME.formatTime(r.ts);
       const esEntrada = r.cuenta_debe === cuentaCaja;
       const color = esEntrada ? 'var(--green)' : 'var(--red)';
       const signo = esEntrada ? '+' : '−';

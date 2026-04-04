@@ -40,7 +40,7 @@ let currentShift = null;
 let selectedRoom = null;
 
 function startNewShift() {
-  const hour = new Date().getHours();
+  const hour = NOCTA_TIME.boliviaHour();
   const type = (hour >= 6 && hour < 18) ? 'day' : 'night';
   currentShift = { id: Date.now(), type, start: Date.now(), entries: [] };
   api('turno', 'POST', currentShift);
@@ -62,7 +62,7 @@ let activityLog = [];
 function addLog(action, details) {
   const entry = {
     ts: Date.now(),
-    time: new Date().toLocaleString('es-BO'),
+    time: NOCTA_TIME.formatDateTime(Date.now()),
     action,
     details: details || ''
   };

@@ -604,7 +604,7 @@ function printShift() {
     </style></head><body>
     <h2>🦋 Motel 23</h2>
     <div class="sub">Resumen de turno ${isDay?'☀ Día':'🌙 Noche'}</div>
-    <div class="sub">${new Date(currentShift.start).toLocaleString('es-BO')} → ${new Date().toLocaleString('es-BO')}</div>
+    <div class="sub">${NOCTA_TIME.formatDateTime(currentShift.start)} → ${NOCTA_TIME.formatDateTime(Date.now())}</div>
     <hr>
     <div class="row"><span>Habitaciones atendidas:</span><span>${entries.length}</span></div>
     <div class="row total"><span>TOTAL RECAUDADO:</span><span>Bs ${total}</span></div>
@@ -614,7 +614,7 @@ function printShift() {
       <tbody>${entries.map(e=>`<tr><td>${e.roomNum}</td><td>${e.type}</td><td>${formatTime(e.checkin)}</td><td>${e.checkout ? formatTime(e.checkout) : e.shiftPrepay ? '💰 Prepago' : '—'}</td><td>Bs ${e.total}</td></tr>`).join('')}</tbody>
     </table>
     <hr>
-    <div style="text-align:center;font-size:10px;color:#999;margin-top:8px">Impreso: ${new Date().toLocaleString('es-BO')}</div>
+    <div style="text-align:center;font-size:10px;color:#999;margin-top:8px">Impreso: ${NOCTA_TIME.formatDateTime(Date.now())}</div>
     <script>window.print();<\/script>
     </body></html>
   `);

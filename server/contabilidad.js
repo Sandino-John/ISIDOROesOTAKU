@@ -1,15 +1,7 @@
 const { handleRouteError, readArray } = require('./http-utils');
+const { operativeDateKey } = require('./time-utils');
 
 module.exports = function registerContabilidadRoutes({ app, db, requireAuth }) {
-  function operativeDateKey() {
-    const now    = new Date();
-    const offset = -4;
-    const utc    = now.getTime() + now.getTimezoneOffset() * 60000;
-    const local  = new Date(utc + offset * 3600000);
-    if (local.getHours() < 6) local.setDate(local.getDate() - 1);
-    return local.toISOString().slice(0, 10);
-  }
-
   app.get('/api/contabilidad/cuentas', requireAuth, async (req, res) => {
     try {
       const rows = await db.all(

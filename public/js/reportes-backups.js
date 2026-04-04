@@ -20,7 +20,7 @@ function findMatchingDayShift(nightShiftStart) {
 
 // Genera reporte HTML imprimible + descarga JSON del día completo
 function generateFullDayReport(dayShift, nightShift) {
-  const fmt = ts => ts ? new Date(ts).toLocaleString('es-BO') : '—';
+  const fmt = ts => ts ? NOCTA_TIME.formatDateTime(ts) : '—';
   const fmtTime = ts => ts ? formatTime(ts) : '—';
   const fmtDur  = (a,b) => formatDuration(b - a);
 
@@ -126,12 +126,12 @@ function generateFullDayReport(dayShift, nightShift) {
     <span>Total habitaciones:</span><span>${allEntries.length}</span>
   </div>
   <hr>
-  <div class="stamp">Generado: ${new Date().toLocaleString('es-BO')} · Motel 23</div>
+  <div class="stamp">Generado: ${NOCTA_TIME.formatDateTime(Date.now())} · Motel 23</div>
   <script>window.print();<\/script>
   </body></html>`;
 
   // Datos JSON del reporte
-  const dateKey = new Date(dayShift.start).toISOString().slice(0,10);
+  const dateKey = operativeDateKey(dayShift.start);
   const jsonData = {
     fecha: dateKey,
     exportado: new Date().toISOString(),
@@ -248,7 +248,7 @@ function importBackup(event) {
       }
       window._pendingRestore = data;
       const date = data._meta?.exportDate
-        ? new Date(data._meta.exportDate).toLocaleString('es-BO')
+        ? NOCTA_TIME.formatDateTime(data._meta.exportDate)
         : 'Desconocida';
       const keyCount = Object.keys(data).filter(k => k.startsWith('hm_')).length;
       document.getElementById('restoreDate').textContent = date;

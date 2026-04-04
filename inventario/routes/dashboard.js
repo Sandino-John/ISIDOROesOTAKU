@@ -2,12 +2,14 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const { requireAuthHtml } = require('../../server/auth');
+const { monthRange } = require('../../server/time-utils');
 
 router.use(requireAuthHtml);
 
 router.get('/', async (req, res) => {
   try {
     const mid = req.motel_id;
+    const { start: monthStart } = monthRange();
 
     const { rows: [{ c: totalProductos }] } = await db.query(
       'SELECT COUNT(*) AS c FROM inv_productos WHERE motel_id = $1',
@@ -35,13 +37,13 @@ router.get('/', async (req, res) => {
     );
     const { rows: [{ t: totalEntradas }] } = await db.query(
       `SELECT COALESCE(SUM(cantidad), 0) AS t FROM inv_entradas
-       WHERE motel_id = $1 AND fecha >= DATE_TRUNC('month', CURRENT_DATE)`,
-      [mid]
+       WHERE motel_id = $1 AND fecha >= $2`,
+      [mid, monthStart]
     );
     const { rows: [{ t: totalSalidas }] } = await db.query(
       `SELECT COALESCE(SUM(cantidad), 0) AS t FROM inv_salidas
-       WHERE motel_id = $1 AND fecha >= DATE_TRUNC('month', CURRENT_DATE)`,
-      [mid]
+       WHERE motel_id = $1 AND fecha >= $2`,
+      [mid, monthStart]
     );
 
     res.render('almacen/index', {
