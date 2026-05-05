@@ -174,6 +174,42 @@ async function registrarAsientoConsumo(tipo, monto) {
   } catch(e) { console.warn('Contabilidad: error registrando consumo', e); }
 }
 
+async function registrarAsientoVitrinaDirecta(entry) {
+  try {
+    const pago = entry?.pago?.vitrina;
+    if (!pago) return;
+
+    const detalle = (entry.vitrinaItems || [])
+      .map(item => `${item.qty}x ${item.name}`)
+      .join(', ') || 'Venta directa vitrina';
+    const refId = String(entry.checkinTs || Date.now());
+    const asientos = [];
+
+    if (pago.cash > 0) {
+      asientos.push({
+        concepto: `Vitrina directa (${detalle})`,
+        cuenta_debe: '1004',
+        cuenta_haber: '4003',
+        monto: pago.cash,
+        referencia: 'vitrina_directa',
+        ref_id: refId
+      });
+    }
+    if (pago.qr > 0) {
+      asientos.push({
+        concepto: `Vitrina directa (${detalle}) (QR)`,
+        cuenta_debe: '1002',
+        cuenta_haber: '4003',
+        monto: pago.qr,
+        referencia: 'vitrina_directa',
+        ref_id: refId
+      });
+    }
+
+    if (asientos.length > 0) await api('contabilidad/asiento', 'POST', { asientos });
+  } catch(e) { console.warn('Contabilidad: error registrando vitrina directa', e); }
+}
+
 async function renderLibroCaja(type, desde, hasta) {
   const el = document.getElementById('contab-content-' + type);
   const esBebida = type === 'bebidas';

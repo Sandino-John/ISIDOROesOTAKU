@@ -14,7 +14,13 @@
       "Bash(copy \"C:\\\\motel23\\\\index.html\" \"C:\\\\motel23\\\\public\\\\index.html\" /Y)",
       "Bash(ls \"C:\\\\motel23\\\\public\\\\images\"\" 2>/dev/null || dir /b \"C:motel23publicimages \")",
       "Bash(cmd /c \"powershell -NoProfile -Command \"\"Add-Type -AssemblyName System.Drawing; dir C:/motel23/public/images | % { $i=[System.Drawing.Image]::FromFile\\($_FullName\\); $_Name+'': ''+$i.Width+''x''+$i.Height; $i.Dispose\\(\\) }\"\"\")",
-      "Bash(pkill -f \"node server.js\")"
+      "Bash(pkill -f \"node server.js\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //PID 17852 //F)",
+      "Bash(grep -n \"function openInventario\" /c/motel23codexclaude-saas/public/js/*.js)",
+      "Bash(grep -n \"openDrawer\\(''inventario\" /c/motel23codexclaude-saas/public/js/*.js)",
+      "Bash(ls -la /c/Users/eduar/motel23codexclaude-saas/server/*.js)",
+      "Bash(taskkill //PID 64824 //F)"
     ]
   }
 }

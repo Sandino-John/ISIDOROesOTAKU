@@ -231,6 +231,11 @@ function calcStockTotals(type) {
         items.push({ name: prod?.name || item.id, qty: item.qty, total: item.price * item.qty, room: e.room });
       }
     });
+    if (!isBebida) {
+      (e.vitrinaItems || []).forEach(item => {
+        items.push({ name: item.name || item.id, qty: item.qty, total: item.price * item.qty, room: e.room });
+      });
+    }
   });
 
   const caja = getCajaData();
@@ -792,6 +797,9 @@ function confirmShiftClose() {
     const occ = occupancy[num];
     if (!occ || occ.cleaning) return;
 
+    // Si ya tenía prepago del check-in, no crear entry duplicado
+    if (occ.prepaid) return;
+
     // Calcular horas transcurridas para registrar en prepaid
     const elapsed = Date.now() - occ.checkin;
     const hours = Math.max(1, Math.ceil(elapsed / 3600000));
@@ -802,7 +810,7 @@ function confirmShiftClose() {
 
     // Crear entry en el turno actual
     currentShift.entries = currentShift.entries || [];
-    currentShift.entries.push({
+    const prepayEntry = {
       roomNum: parseInt(num),
       type: roomDef ? typeNames[roomDef.type] : 'Hab.',
       guest: occ.guest || '',
@@ -812,12 +820,16 @@ function confirmShiftClose() {
       total: p.amount,
       prepaid: { hours, amount: p.amount, cash: p.cash, qr: p.qr },
       pago: {
-        hab: { monto: p.amount, cash: p.cash, qr: p.qr, comision: 0, cambio: 0, prepaid: p.amount },
+        hab: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0, prepaid: p.amount, prepaidCash: p.cash || 0, prepaidQr: p.qr || 0 },
         minibar: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0 },
         vitrina: { monto: 0, cash: 0, qr: 0, comision: 0, cambio: 0 },
       },
       shiftPrepay: true  // marca especial para identificar estos registros
-    });
+    };
+    currentShift.entries.push(prepayEntry);
+
+    // Registrar asiento contable para el prepago
+    registrarAsientoCheckout(prepayEntry);
   });
   window._shiftPrepayments = null;
 
@@ -825,6 +837,17 @@ function confirmShiftClose() {
   currentShift.total = (currentShift.entries||[]).reduce((s,e)=>s+e.total,0);
   if (occupiedCount > 0) {
     currentShift.carriedOver = occupiedCount;
+    // Guardar detalle de habitaciones que pasan al siguiente turno
+    const activeRooms = Object.keys(occupancy).filter(n => !occupancy[n].cleaning);
+    currentShift.pendingRooms = activeRooms.map(num => {
+      const occ = occupancy[num];
+      return {
+        roomNum: parseInt(num),
+        guest: occ.guest || '',
+        checkin: occ.checkin,
+        prepaid: occ.prepaid || null
+      };
+    });
   }
   const closedNightShift = {...currentShift};
   const closedOpDate = operativeDateKey(currentShift.start);
@@ -876,25 +899,18 @@ function confirmShiftClose() {
 
   // Si cerramos turno noche → generar reporte detallado como PDF
   if (closingNight) {
-    setTimeout(() => {
+    setTimeout(async () => {
       if (confirm('🌅 Turno noche cerrado.\n\n¿Generar el reporte PDF del día completo?')) {
-        // Obtener HTML del reporte con datos archivados del día operativo
-        const reportShifts = allDays[closedOpDate] || [];
-        const html = generateDailyPrintReport(reportShifts, true);
-
-        // Guardar en servidor (genera PDF automáticamente)
-        const rdDate = new Date(closedOpDate + 'T12:00:00');
-        const rdDias = ['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO'];
-        const rdMeses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-        const rdName = `${rdDias[rdDate.getDay()]} ${rdDate.getDate()} ${rdMeses[rdDate.getMonth()]} ${rdDate.getFullYear()} RD`;
-        api('guardar-archivo', 'POST', { nombre: `${rdName}.html`, contenido: html });
-
-        // Abrir vista previa
-        const w = window.open('', '_blank');
-        if (w) { w.document.write(html); w.document.close(); }
-
-        addLog('REPORTE', `Reporte diario PDF generado`);
-        toast('📄 Reporte PDF del día guardado en Reportes Diarios');
+        const reportShifts = (allDays[closedOpDate] && allDays[closedOpDate].length)
+          ? allDays[closedOpDate]
+          : shifts.filter(sh => operativeDateKey(sh.start) === closedOpDate);
+        await generateDailyPrintReport(reportShifts, {
+          persist: true,
+          openPdf: true,
+          showSuccess: true,
+          showError: true,
+          alertOnError: true
+        });
       }
     }, 600);
   }

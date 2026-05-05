@@ -5,6 +5,10 @@ function renderMbManage() {
   const filtered = minibarProducts.filter(p =>
     p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q)
   );
+  if (!minibarProducts.length) {
+    document.getElementById('mbManageList').innerHTML = '<div style="font-size:0.75rem;color:var(--text3);padding:12px;text-align:center">Sin productos cargados en inventario</div>';
+    return;
+  }
   const NEVERA_CATS = ['🍺 Bebidas Alcohólicas','🥤 Refrescos','⚡ Energizantes'];
   const header = `<div style="display:flex;align-items:center;padding:4px 8px;border-bottom:1px solid var(--border);margin-bottom:4px">
     <div style="flex:1;font-size:0.65rem;color:var(--text3);font-weight:600;text-transform:uppercase">Producto</div>
@@ -31,7 +35,9 @@ function renderMbManage() {
       </div>
     </div>`;
   }).join('');
-  document.getElementById('mbManageList').innerHTML = (header + rows) || '<div style="font-size:0.75rem;color:var(--text3);padding:8px">Sin resultados</div>';
+  document.getElementById('mbManageList').innerHTML = rows
+    ? (header + rows)
+    : '<div style="font-size:0.75rem;color:var(--text3);padding:8px">Sin resultados</div>';
 }
 
 async function transferStock(invId, destino, nombre) {
@@ -42,17 +48,7 @@ async function transferStock(invId, destino, nombre) {
     const endpoint = destino === 'nevera' ? 'inventario/mover-nevera' : 'inventario/mover-vitrina';
     const res = await api(endpoint, 'POST', { inv_id: invId, cantidad });
     if (res.error) { toast(`❌ ${res.error}`); return; }
-    // Recargar productos frescos
-    const freshProducts = await api('inventario/productos-minibar');
-    if (freshProducts && freshProducts.length) {
-      minibarProducts = freshProducts.map(p => {
-        if (!p.img) {
-          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id || d.name === p.name);
-          if (def) p.img = def.img;
-        }
-        return p;
-      });
-    }
+    await refreshMinibarProducts();
     renderMbManage();
     toast(`✓ ${cantidad} ${nombre} → ${destino}`);
   } catch(e) {
@@ -100,8 +96,70 @@ let minibarProducts = [...DEFAULT_PRODUCTS];
 
 let mbCart = {}; // { productId: qty }
 let mbRoomNum = null;
+let recepcionTab = 'minibar';
 
 // saveProducts() eliminado — el almacén/inventario es la fuente única de verdad
+
+async function refreshMinibarProducts() {
+  const freshProducts = await api('inventario/productos-minibar');
+  if (Array.isArray(freshProducts)) {
+    minibarProducts = freshProducts.map(p => {
+      if (!p.img) {
+        const def = DEFAULT_PRODUCTS.find(d => d.id === p.id || d.name === p.name);
+        if (def) p.img = def.img;
+      }
+      return p;
+    });
+  }
+  return minibarProducts;
+}
+
+function getDisplayCatalogProducts() {
+  if (minibarProducts.length) return minibarProducts;
+  return DEFAULT_PRODUCTS.map(p => ({
+    ...p,
+    stock: 0,
+    stock_almacen: 0,
+    stock_nevera: 0,
+    stock_vitrina: 0
+  }));
+}
+
+function setRecepcionTab(tab) {
+  recepcionTab = tab === 'vitrina' ? 'vitrina' : 'minibar';
+  const isMinibar = recepcionTab === 'minibar';
+
+  const btnMinibar = document.getElementById('recepcion-tab-minibar');
+  const btnVitrina = document.getElementById('recepcion-tab-vitrina');
+  const minibarContent = document.getElementById('recepcion-minibar-content');
+  const vitrinaContent = document.getElementById('recepcion-vitrina-content');
+
+  if (btnMinibar) {
+    btnMinibar.style.borderColor = isMinibar ? 'var(--accent)' : 'var(--border)';
+    btnMinibar.style.background = isMinibar ? 'var(--accent)' : 'var(--surface2)';
+    btnMinibar.style.color = isMinibar ? '#fff' : 'var(--text2)';
+  }
+  if (btnVitrina) {
+    btnVitrina.style.borderColor = !isMinibar ? 'var(--accent)' : 'var(--border)';
+    btnVitrina.style.background = !isMinibar ? 'var(--accent)' : 'var(--surface2)';
+    btnVitrina.style.color = !isMinibar ? '#fff' : 'var(--text2)';
+  }
+  if (minibarContent) minibarContent.style.display = isMinibar ? '' : 'none';
+  if (vitrinaContent) vitrinaContent.style.display = isMinibar ? 'none' : '';
+
+  if (isMinibar) {
+    renderMbManage();
+  } else {
+    inv_renderVitrina();
+    refreshMinibarProducts()
+      .then(() => { if (recepcionTab === 'vitrina') inv_renderVitrina(); })
+      .catch(e => console.warn('No se pudo refrescar stock de vitrina:', e));
+  }
+}
+
+function renderRecepcionPanel() {
+  setRecepcionTab(recepcionTab);
+}
 
 function openMinibar(num, event) {
   event.stopPropagation();
@@ -119,8 +177,9 @@ function openMinibar(num, event) {
 }
 
 function renderMbProducts() {
+  const catalog = getDisplayCatalogProducts();
   const cats = {};
-  minibarProducts.forEach(p => {
+  catalog.forEach(p => {
     if (!cats[p.cat]) cats[p.cat] = [];
     cats[p.cat].push(p);
   });
@@ -153,7 +212,7 @@ function renderMbProducts() {
 }
 
 function mbChange(id, delta) {
-  const p = minibarProducts.find(p=>p.id===id);
+  const p = getDisplayCatalogProducts().find(p=>p.id===id);
   if (!p) return;
   const cur = mbCart[id] || 0;
   const newQty = Math.max(0, Math.min(p.stock, cur + delta));
@@ -187,7 +246,7 @@ function renderCart() {
   }
   let total = 0;
   items.innerHTML = keys.map(id => {
-    const p = minibarProducts.find(p=>p.id==id);
+    const p = getDisplayCatalogProducts().find(p=>p.id==id);
     const subtotal = p.price * mbCart[id];
     total += subtotal;
     return `<div class="cart-item"><span class="cart-item-name">${p.name} ×${mbCart[id]}</span><span class="cart-item-price">Bs ${subtotal}</span></div>`;
@@ -237,16 +296,7 @@ async function confirmMinibar() {
 
   // Recargar stock fresco del inventario
   try {
-    const freshProducts = await api('inventario/productos-minibar');
-    if (freshProducts && freshProducts.length) {
-      minibarProducts = freshProducts.map(p => {
-        if (!p.img) {
-          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id || d.name === p.name);
-          if (def) p.img = def.img;
-        }
-        return p;
-      });
-    }
+    await refreshMinibarProducts();
   } catch(e) { console.warn('No se pudo recargar stock:', e); }
 
   closeModal('minibarOverlay');
@@ -497,8 +547,18 @@ async function confirmPersonalSale() {
   const items = Object.entries(personalCart);
   if (!items.length) { toast('Carrito vacío'); return; }
 
-  const promptText = personalMode === 'vip' ? 'Nombre (V.I.P.):' : 'Nombre del empleado:';
-  const nombre = prompt(promptText);
+  // Intentar obtener empleado del dropdown, fallback a prompt
+  const selEmpleado = document.getElementById('consumo-empleado-select');
+  const empId = selEmpleado ? selEmpleado.value : '';
+  let nombre;
+  if (empId && typeof empleados !== 'undefined') {
+    const emp = empleados.find(e => e.id == empId);
+    nombre = emp ? emp.nombre : null;
+  }
+  if (!nombre) {
+    const promptText = personalMode === 'vip' ? 'Nombre (V.I.P.):' : 'Nombre del empleado:';
+    nombre = prompt(promptText);
+  }
   if (!nombre || !nombre.trim()) { toast('Debe ingresar el nombre'); return; }
 
   const NEVERA_CATS = ['🍺 Bebidas Alcohólicas','🥤 Refrescos','⚡ Energizantes'];
@@ -552,18 +612,22 @@ async function confirmPersonalSale() {
   await saveShift();
   if (total > 0) registrarAsientoConsumo(personalMode, total);
 
+  // Registrar en cuaderno del empleado si se seleccionó del dropdown
+  if (empId && personalMode === 'personal') {
+    try {
+      const nombres = detalles.map(d => `${d.qty}x ${d.name}`).join(', ');
+      await api('personal/' + empId + '/movimientos', 'POST', {
+        tipo: 'consumo',
+        monto: total,
+        concepto: nombres
+      });
+      if (typeof loadEmpleados === 'function') await loadEmpleados();
+    } catch(e) {}
+  }
+
   // Recargar stock fresco
   try {
-    const freshProducts = await api('inventario/productos-minibar');
-    if (freshProducts && freshProducts.length) {
-      minibarProducts = freshProducts.map(p => {
-        if (!p.img) {
-          const def = DEFAULT_PRODUCTS.find(d => d.id === p.id || d.name === p.name);
-          if (def) p.img = def.img;
-        }
-        return p;
-      });
-    }
+    await refreshMinibarProducts();
   } catch(e) {}
 
   // Limpiar
@@ -580,10 +644,17 @@ async function confirmPersonalSale() {
 // ─── VENTA DIRECTA VITRINA (legacy) ────────────────────────────────────────
 let inv_vitrinaCart = {};
 
+function getVitrinaProductStock(prod) {
+  const directStock = Number(prod?.stock_vitrina);
+  if (!Number.isNaN(directStock)) return directStock;
+  const inv = inv_data.find(i => i.producto_id === prod?.id);
+  return Number(inv?.vitrina || 0);
+}
+
 function inv_openVitrina() {
   inv_vitrinaCart = {};
-  inv_renderVitrina();
-  openDrawer('vitrina', document.getElementById('rail-vitrina'));
+  openDrawer('recepcion', document.getElementById('rail-recepcion'));
+  setRecepcionTab('vitrina');
 }
 
 function inv_renderVitrina() {
@@ -594,24 +665,29 @@ function inv_renderVitrina() {
   const vitProds = minibarProducts.filter(p => !MINIBAR_CATS.includes(p.cat));
   const cats = [...new Set(vitProds.map(p => p.cat))];
 
+  if (!vitProds.length) {
+    panel.innerHTML = '<div style="font-size:0.74rem;color:var(--text3);text-align:center;padding:18px 10px">Sin productos configurados para vitrina</div>';
+    inv_renderVitrinaTotal();
+    return;
+  }
+
   let html = '';
   cats.forEach(cat => {
     const prods = vitProds.filter(p => p.cat === cat);
     html += `<div style="font-size:0.7rem;color:var(--text3);margin:8px 0 4px;font-weight:600">${cat}</div>`;
     prods.forEach(p => {
       const qty = inv_vitrinaCart[p.id] || 0;
-      // Buscar stock en vitrina desde inv_data
-      const inv = inv_data.find(i => i.producto_id === p.id);
-      const stock = inv ? (inv.vitrina || 0) : 0;
+      const stock = getVitrinaProductStock(p);
+      const hasStock = stock > 0;
       html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1">
           <span style="font-size:0.8rem">${p.name}</span>
-          <span style="font-size:0.65rem;color:var(--text3);margin-left:4px">Bs ${p.price} · stock: ${stock}</span>
+          <span style="font-size:0.65rem;color:var(--text3);margin-left:4px">Bs ${p.price} · stock: ${stock}${hasStock ? '' : ' · sin stock'}</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px">
-          <button onclick="inv_vitrinaChange(${p.id},-1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:0.8rem">−</button>
+          <button onclick="inv_vitrinaChange(${p.id},-1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:0.8rem" ${qty > 0 ? '' : 'disabled'}>−</button>
           <span style="min-width:20px;text-align:center;font-weight:600">${qty}</span>
-          <button onclick="inv_vitrinaChange(${p.id},1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:0.8rem">+</button>
+          <button onclick="inv_vitrinaChange(${p.id},1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:${hasStock ? 'var(--bg2)' : 'var(--surface2)'};cursor:${hasStock ? 'pointer' : 'not-allowed'};font-size:0.8rem;opacity:${hasStock ? '1' : '0.45'}" ${hasStock ? '' : 'disabled'}>+</button>
         </div>
       </div>`;
     });
@@ -623,7 +699,9 @@ function inv_renderVitrina() {
 
 function inv_vitrinaChange(id, delta) {
   const cur = inv_vitrinaCart[id] || 0;
-  const newQty = Math.max(0, cur + delta);
+  const prod = minibarProducts.find(p => p.id == id);
+  const stock = getVitrinaProductStock(prod);
+  const newQty = Math.max(0, Math.min(stock, cur + delta));
   if (newQty === 0) delete inv_vitrinaCart[id];
   else inv_vitrinaCart[id] = newQty;
   inv_renderVitrina();
@@ -660,7 +738,13 @@ async function inv_confirmVitrinaSale() {
     detalles.push({ id: prod.id, name: prod.name, price: prod.price, qty });
 
     // Registrar venta en inventario
-    await api('inventario/vender-vitrina', 'POST', { producto_id: prod.id, cantidad: qty });
+    await api('inventario/vender-vitrina', 'POST', {
+      producto_id: prod.id,
+      inv_id: prod.inv_id,
+      cantidad: qty,
+      monto,
+      metodo_pago: method
+    });
   }
 
   // Registrar en turno como entrada vitrina-directa
@@ -689,6 +773,15 @@ async function inv_confirmVitrinaSale() {
 
   currentShift.entries.push(entry);
   await saveShift();
+  if (typeof registrarAsientoVitrinaDirecta === 'function') {
+    await registrarAsientoVitrinaDirecta(entry);
+  }
+
+  try {
+    await refreshMinibarProducts();
+  } catch (e) {
+    console.warn('No se pudo refrescar stock de vitrina:', e);
+  }
 
   // Limpiar carrito
   inv_vitrinaCart = {};

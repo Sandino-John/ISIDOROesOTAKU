@@ -303,9 +303,17 @@ function doCheckout() {
   const habMontoReal = habPago.monto !== undefined ? habPago.monto : bill.total;
   const prepaidAmount = occ.prepaid ? occ.prepaid.amount : 0;
 
+  // Si el prepago ya generó un entry en un cierre de turno anterior,
+  // no incluirlo en este total para evitar doble conteo.
+  // El prepago ya está registrado como entry separado con shiftPrepay=true.
+  const prepaidYaRegistrado = [...shifts, currentShift].some(sh =>
+    (sh.entries || []).some(en => en.shiftPrepay && en.roomNum == room.num)
+  );
+  const prepaidEnTotal = prepaidYaRegistrado ? 0 : prepaidAmount;
+
   // Comisión solo de habitación (QR de minibar/vitrina no tiene comisión)
-  // Total = prepago + pendiente hab + comisión + minibar + vitrina
-  const totalConComisiones = prepaidAmount + habMontoReal + (habPago.comision || 0) + minibarBs + vitrinaBs;
+  // Total = prepago (si no fue registrado antes) + pendiente hab + comisión + minibar + vitrina
+  const totalConComisiones = prepaidEnTotal + habMontoReal + (habPago.comision || 0) + minibarBs + vitrinaBs;
 
   const entry = {
     roomNum: room.num, type: typeNames[room.type],
@@ -313,10 +321,10 @@ function doCheckout() {
     mode: occ.mode, total: totalConComisiones,
     breakdown: bill.breakdown, extraLabel: bill.extraLabel||'', extraCharge: bill.extraCharge||0,
     minibar: minibarItems,
-    prepaid: occ.prepaid || null,
+    prepaid: prepaidYaRegistrado ? null : (occ.prepaid || null),
     // Payment detail — cash y qr por sección
     pago: {
-      hab:     { monto: habMontoReal, cash: habPago.cash || 0, qr: habPago.qr || 0, comision: habPago.comision || 0, cambio: habPago.cambio || 0, prepaid: prepaidAmount, prepaidCash: occ.prepaid ? (occ.prepaid.cash||0) : 0, prepaidQr: occ.prepaid ? (occ.prepaid.qr||0) : 0 },
+      hab:     { monto: habMontoReal, cash: habPago.cash || 0, qr: habPago.qr || 0, comision: habPago.comision || 0, cambio: habPago.cambio || 0, prepaid: prepaidEnTotal, prepaidCash: prepaidYaRegistrado ? 0 : (occ.prepaid ? (occ.prepaid.cash||0) : 0), prepaidQr: prepaidYaRegistrado ? 0 : (occ.prepaid ? (occ.prepaid.qr||0) : 0) },
       minibar: { monto: minibarBs,  cash: minibarPago.cash || 0,  qr: minibarPago.qr || 0,  comision: 0,                    cambio: minibarPago.cambio || 0 },
       vitrina: { monto: vitrinaBs,  cash: vitrinaPago.cash || 0,  qr: vitrinaPago.qr || 0,  comision: 0,                    cambio: vitrinaPago.cambio || 0 },
     }

@@ -14,17 +14,17 @@ function render() {
       const card = document.createElement('div');
       card.className = 'room-card almacen-card';
       card.id = 'card-20';
-      card.onclick = () => openInventario();
+      card.onclick = () => openAdminHub();
       card.innerHTML = `
         <div style="position:absolute;top:4px;left:50%;transform:translateX(-50%);font-size:0.48rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.55);white-space:nowrap;z-index:2">ADMIN</div>
         <div class="card-top">
           <div class="room-number" style="font-size:1.2rem">📦</div>
         </div>
         <div class="card-body">
-          <div style="font-size:2.5rem">🏪</div>
+          <div style="font-size:1.4rem;display:flex;gap:6px">🏪 👥</div>
         </div>
         <div class="card-bottom">
-          <div style="font-size:0.6rem;font-weight:800;padding:3px 8px;border-radius:20px;letter-spacing:0.8px;text-transform:uppercase;background:rgba(139,92,246,0.18);color:#a78bfa;border:1px solid rgba(139,92,246,0.35)">Almacén</div>
+          <div style="font-size:0.55rem;font-weight:800;padding:3px 8px;border-radius:20px;letter-spacing:0.5px;text-transform:uppercase;background:rgba(139,92,246,0.18);color:#a78bfa;border:1px solid rgba(139,92,246,0.35)">Almacén · RRHH</div>
         </div>
       `;
       grid.appendChild(card);
@@ -146,8 +146,9 @@ function updateStats() {
   const allOcc = Object.values(occupancy);
   const occupied = allOcc.filter(o => !o.cleaning).length;
   const cleaning = allOcc.filter(o => o.cleaning).length;
-  const free = ROOM_DEFS.length - occupied - cleaning;
-  const total = ROOM_DEFS.length;
+  const operRoomCount = ROOM_DEFS.filter(r => r.num !== 20).length;
+  const free = operRoomCount - occupied - cleaning;
+  const total = operRoomCount;
 
   // Header
   document.getElementById('h-occupied').textContent = occupied;
@@ -243,19 +244,22 @@ function updateStatsPanel() {
 // Timestamp de inicio del día de negocio actual
 // (cuando empezó el último turno 'day', o el turno actual si es de día)
 function getCurrentDayStart() {
-  const midnightToday = new Date(); midnightToday.setHours(0,0,0,0);
-  const midnightTs = midnightToday.getTime();
+  // Día operativo: cambia a las 6 AM Bolivia (UTC-4), no a medianoche
+  const todayOpKey = NOCTA_TIME.operativeDateKey();
 
-  // Turno actual de día que empezó hoy
-  if (currentShift && currentShift.type === 'day' && currentShift.start >= midnightTs) {
+  // Turno actual de día que pertenece al día operativo actual
+  if (currentShift && currentShift.type === 'day' && NOCTA_TIME.operativeDateKey(currentShift.start) === todayOpKey) {
     return currentShift.start;
   }
-  // Buscar en turnos cerrados el último turno día que empezó hoy
+  // Buscar en turnos cerrados el último turno día del día operativo actual
   for (let i = shifts.length - 1; i >= 0; i--) {
-    if (shifts[i].type === 'day' && shifts[i].start >= midnightTs) return shifts[i].start;
+    if (shifts[i].type === 'day' && NOCTA_TIME.operativeDateKey(shifts[i].start) === todayOpKey) return shifts[i].start;
   }
-  // Fallback: medianoche de hoy
-  return midnightTs;
+  // Fallback: 6 AM Bolivia de hoy en timestamp
+  // Construimos el timestamp de las 6:00 AM UTC-4 del día operativo actual
+  const parts = todayOpKey.split('-');
+  const fallback = new Date(Date.UTC(+parts[0], +parts[1]-1, +parts[2], 10, 0, 0)); // 6AM UTC-4 = 10AM UTC
+  return fallback.getTime();
 }
 
 function renderHistory() {
@@ -543,7 +547,7 @@ function saveHist() {
 // ─── SIDEBAR DRAWER ───────────────────────────────────────────────────────────
 let drawerOpen = false;
 let activePanel = 'status';
-const drawerTitles = { status:'📊 Estado', stats:'📈 Estadísticas', minibar:'🛒 Minibar', records:'📋 Registros', caja:'💰 Caja', personal:'👤 Personal', inventario:'📦 Inventario', contabilidad:'📒 Libros Contables' };
+const drawerTitles = { status:'📊 Estado', stats:'📈 Estadísticas', recepcion:'🛎 Recepción', records:'📋 Registros', caja:'💰 Caja', personal:'👤 Personal', inventario:'📦 Inventario', contabilidad:'📒 Libros Contables' };
 
 function openDrawer(panel, btn) {
   const drawer = document.getElementById('sidebarDrawer');
@@ -564,11 +568,11 @@ function openDrawer(panel, btn) {
   document.querySelectorAll('.rail-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 
-  if (panel === 'minibar') renderMbManage();
+  if (panel === 'recepcion' && typeof renderRecepcionPanel === 'function') renderRecepcionPanel();
   if (panel === 'stats') updateStatsPanel();
   if (panel === 'records') renderRecords();
   if (panel === 'caja') { if (cajaTab === 'tiempo') renderCaja(); else renderStockTab(cajaTab); }
-  if (panel === 'personal') renderPersonalPanel();
+  if (panel === 'personal') { loadEmpleados().then(() => setPersonalTab(personalTab)); }
   if (panel === 'inventario') inv_render();
   if (panel === 'contabilidad') renderContabilidad();
 }
@@ -970,7 +974,7 @@ async function initApp() {
     if (histData && histData.length) history = histData;
     if (turnoData) currentShift = turnoData;
     if (turnosData && turnosData.length) shifts = turnosData;
-    if (prodData && prodData.length) {
+    if (Array.isArray(prodData)) {
       // Productos del inventario — enriquecer con imágenes del DEFAULT
       minibarProducts = prodData.map(p => {
         if (!p.img) {
@@ -979,6 +983,8 @@ async function initApp() {
         }
         return p;
       });
+    } else {
+      minibarProducts = [];
     }
     if (cajaRes) cajaData = cajaRes;
     // Migrar retiros legacy a movimientos
@@ -997,6 +1003,7 @@ async function initApp() {
 
   } catch(e) {
     console.warn('⚠ No se pudo conectar al servidor, intentando localStorage...', e);
+    minibarProducts = [];
     // Restaurar desde localStorage si el servidor no responde
     try {
       const backup = JSON.parse(localStorage.getItem('motel23_backup') || '{}');

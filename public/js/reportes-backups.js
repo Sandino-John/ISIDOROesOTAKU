@@ -425,195 +425,775 @@ function viewActivityLog() {
   content.innerHTML = html;
 }
 
-// ─── REPORTE DIARIO IMPRIMIBLE ────────────────────────────────────────────────
-function generateDailyPrintReport(explicitShifts, returnOnly) {
-  // Recopilar turnos del día actual (o usar los proporcionados explícitamente)
-  const dayShifts = explicitShifts || buildCurrentDayShifts();
-  const dayEntries = dayShifts.flatMap(sh => sh.entries || []);
+function escapeReportHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
-  // Separar por turno
-  const morningShifts = dayShifts.filter(sh => sh.type === 'day');
-  const nightShifts = dayShifts.filter(sh => sh.type === 'night');
-  const morningEntries = morningShifts.flatMap(sh => sh.entries || []);
-  const nightEntries = nightShifts.flatMap(sh => sh.entries || []);
+function reportEntryStart(entry) {
+  return entry?.checkin || entry?.checkinTs || entry?.ts || 0;
+}
 
-  function calcTotals(entries) {
-    let efect = 0, qr = 0, bebidasCash = 0, bebidasQr = 0, vitrinaCash = 0, vitrinaQr = 0;
-    entries.forEach(e => {
-      const p = e.pago || {};
-      // Efectivo = hab cash + prepago efectivo
-      efect += (p.hab?.cash || 0) + (p.hab?.prepaidCash || p.hab?.prepaid || 0);
-      // QR = hab qr + prepago QR
-      qr += (p.hab?.qr || 0) + (p.hab?.prepaidQr || 0);
-      // Bebidas (minibar) separado por método
-      bebidasCash += p.minibar?.cash || 0;
-      bebidasQr += p.minibar?.qr || 0;
-      // Vitrina separado por método
-      vitrinaCash += p.vitrina?.cash || 0;
-      vitrinaQr += p.vitrina?.qr || 0;
-    });
-    return { efect, qr, bebidasCash, bebidasQr, vitrinaCash, vitrinaQr };
-  }
+function reportEntryEnd(entry) {
+  return entry?.checkout || entry?.checkoutTs || null;
+}
 
-  function formatTimeReport(ts) {
-    if (!ts) return '—';
-    return new Date(ts).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', hour12: true });
-  }
+function formatReportTime(ts) {
+  return ts ? NOCTA_TIME.formatTime(ts) : '—';
+}
 
-  function vehicleEmoji(guest) {
-    return (guest || '').split(' ').slice(1).join(' ') || (guest || '').split(' ')[0] || '—';
-  }
+function formatCashValue(amount) {
+  return `Bs ${Number(amount) || 0}`;
+}
 
-  function minibarText(items) {
-    if (!items || !items.length) return '—';
-    return items.map(i => `${i.name} x${i.qty}`).join(', ');
-  }
+function formatQrValue(amount) {
+  return `QR ${Number(amount) || 0}`;
+}
 
-  function buildTableRows(entries) {
-    if (!entries.length) return '<tr><td colspan="9" style="text-align:center;color:#999;padding:12px">Sin registros</td></tr>';
-    return entries.map(e => {
-      const p = e.pago || {};
-      const habCash = (p.hab?.cash || 0) + (p.hab?.prepaidCash || p.hab?.prepaid || 0);
-      const habQr = (p.hab?.qr || 0) + (p.hab?.prepaidQr || 0);
-      const mbCash = p.minibar?.cash || 0;
-      const mbQr = p.minibar?.qr || 0;
-      const vitCash = p.vitrina?.cash || 0;
-      const vitQr = p.vitrina?.qr || 0;
-      const mbItems = e.minibar || [];
-      return `<tr>
-        <td>${e.roomNum}</td>
-        <td>${formatTimeReport(e.checkin)}</td>
-        <td>${formatTimeReport(e.checkout)}</td>
-        <td>Bs ${habCash}${habQr > 0 ? ' <small style="color:#888">(QR '+habQr+')</small>':''}
-        </td>
-        <td>${(mbCash+mbQr) > 0 ? 'Bs '+(mbCash+mbQr)+(mbQr>0?' <small style="color:#888">(QR '+mbQr+')</small>':'') : '—'}</td>
-        <td>${(vitCash+vitQr) > 0 ? 'Bs '+(vitCash+vitQr)+(vitQr>0?' <small style="color:#888">(QR '+vitQr+')</small>':'') : '—'}</td>
-        <td style="font-size:0.7em">${minibarText(mbItems)}</td>
-        <td>${vehicleEmoji(e.guest)}</td>
-      </tr>`;
-    }).join('');
-  }
+function formatPaymentValue(cash, qr) {
+  const cashAmount = Number(cash) || 0;
+  const qrAmount = Number(qr) || 0;
+  if (cashAmount > 0 && qrAmount > 0) return `Bs ${cashAmount} + QR ${qrAmount}`;
+  if (qrAmount > 0) return `QR ${qrAmount}`;
+  if (cashAmount > 0) return `Bs ${cashAmount}`;
+  return '—';
+}
 
-  const mTotals = calcTotals(morningEntries);
-  const nTotals = calcTotals(nightEntries);
-  const gTotals = {
-    efect: mTotals.efect + nTotals.efect,
-    qr: mTotals.qr + nTotals.qr,
-    bebidasCash: mTotals.bebidasCash + nTotals.bebidasCash,
-    bebidasQr: mTotals.bebidasQr + nTotals.bebidasQr,
-    vitrinaCash: mTotals.vitrinaCash + nTotals.vitrinaCash,
-    vitrinaQr: mTotals.vitrinaQr + nTotals.vitrinaQr
+function buildDailyReportFileNames(opDateKey) {
+  const rdDate = new Date(`${opDateKey}T12:00:00Z`);
+  const now = new Date();
+  const rdDias = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
+  const rdMeses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const primaryBase = `${rdDias[rdDate.getUTCDay()]} ${rdDate.getUTCDate()} ${rdMeses[rdDate.getUTCMonth()]} ${rdDate.getUTCFullYear()} RD`;
+  const versionStamp = new Intl.DateTimeFormat('es-BO', {
+    timeZone: NOCTA_TIME.timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(now).replace(/:/g, '-') + '-' + String(now.getMilliseconds()).padStart(3, '0');
+  const versionedBase = `${primaryBase} ${versionStamp}`;
+  const folderUrl = '/Reportes%20Diarios/';
+  return {
+    opDateKey,
+    primaryBase,
+    versionedBase,
+    primaryHtml: `${primaryBase}.html`,
+    primaryJson: `${primaryBase}.json`,
+    primaryPdf: `${primaryBase}.pdf`,
+    versionedHtml: `${versionedBase}.html`,
+    versionedJson: `${versionedBase}.json`,
+    versionedPdf: `${versionedBase}.pdf`,
+    primaryPdfUrl: `${folderUrl}${encodeURIComponent(`${primaryBase}.pdf`)}`,
+    versionedPdfUrl: `${folderUrl}${encodeURIComponent(`${versionedBase}.pdf`)}`
+  };
+}
+
+function deriveCajaSnapshotFromEntries(entries) {
+  const snapshot = {
+    inicio: 0,
+    gastos: 0,
+    totalCambios: 0,
+    hab: { cash: 0, qr: 0, com: 0 },
+    minibar: { cash: 0, qr: 0, com: 0 },
+    vitrina: { cash: 0, qr: 0, com: 0 },
+    efectivo: 0,
+    digital: 0,
+    comisiones: 0,
+    total: 0,
+    egresos: []
   };
 
-  const fechaHoy = (() => {
-    if (explicitShifts && explicitShifts.length) {
-      const d = new Date(operativeDateKey(explicitShifts[0].start) + 'T12:00:00');
-      return d.toLocaleDateString('es-BO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  (entries || []).forEach(e => {
+    const p = e.pago || {};
+    snapshot.hab.cash += (p.hab?.cash || 0) + (p.hab?.prepaidCash || 0);
+    snapshot.hab.qr += (p.hab?.qr || 0) + (p.hab?.prepaidQr || 0);
+    snapshot.hab.com += p.hab?.comision || 0;
+    snapshot.minibar.cash += p.minibar?.cash || 0;
+    snapshot.minibar.qr += p.minibar?.qr || 0;
+    snapshot.vitrina.cash += p.vitrina?.cash || 0;
+    snapshot.vitrina.qr += p.vitrina?.qr || 0;
+    snapshot.totalCambios += (p.hab?.cambio || 0) + (p.minibar?.cambio || 0) + (p.vitrina?.cambio || 0);
+  });
+
+  snapshot.digital = snapshot.hab.qr + snapshot.minibar.qr + snapshot.vitrina.qr;
+  snapshot.efectivo = snapshot.hab.cash + snapshot.minibar.cash + snapshot.vitrina.cash - snapshot.totalCambios;
+  snapshot.comisiones = snapshot.hab.com + snapshot.minibar.com + snapshot.vitrina.com;
+  snapshot.total = snapshot.efectivo + snapshot.digital;
+  return snapshot;
+}
+
+function getShiftCajaSnapshot(shift) {
+  if (shift?.caja) return shift.caja;
+  if (shift === currentShift) return calcCajaTotals();
+  return deriveCajaSnapshotFromEntries(shift?.entries || []);
+}
+
+function sumEntrySection(entries, sectionKey) {
+  return (entries || []).reduce((acc, entry) => {
+    const section = entry?.pago?.[sectionKey] || {};
+    acc.cash += section.cash || 0;
+    acc.qr += section.qr || 0;
+    return acc;
+  }, { cash: 0, qr: 0 });
+}
+
+function buildDailyReportContext(explicitShifts) {
+  const reportShifts = explicitShifts || buildCurrentDayShifts();
+  const baseReportTs = reportShifts.length
+    ? Math.min(...reportShifts.map(shift => shift.start || Date.now()))
+    : Date.now();
+  const opDateKey = operativeDateKey(baseReportTs);
+
+  function deduplicateRoomEntries(allShifts) {
+    const rawEntries = [];
+    allShifts.forEach(sh => {
+      (sh.entries || []).forEach(entry => {
+        if (entry.roomNum == null && !entry.shiftPrepay) return;
+        const cloned = { ...entry };
+        if (cloned.checkin && sh.start && cloned.checkin < sh.start) cloned._fromPrevShift = true;
+        rawEntries.push(cloned);
+      });
+    });
+
+    const checkouts = rawEntries.filter(entry => entry.checkout && !entry.shiftPrepay);
+    const prepays = rawEntries.filter(entry => entry.shiftPrepay);
+    const latestPrepayByRoom = {};
+    prepays.forEach(entry => { latestPrepayByRoom[entry.roomNum] = entry; });
+
+    const filteredPrepays = Object.values(latestPrepayByRoom).filter(prepay => {
+      const roomCheckouts = checkouts.filter(checkout => checkout.roomNum === prepay.roomNum);
+      if (!roomCheckouts.length) return true;
+      return roomCheckouts.every(checkout => prepay.checkin >= (checkout.checkout || 0));
+    });
+
+    return [...checkouts, ...filteredPrepays].sort((a, b) => reportEntryStart(a) - reportEntryStart(b));
+  }
+
+  function deduplicatePendingRooms(allShifts, roomEntries) {
+    const pendingByRoom = {};
+    allShifts.forEach(sh => {
+      (sh.pendingRooms || []).forEach(room => {
+        pendingByRoom[room.roomNum] = room;
+      });
+    });
+
+    const checkoutEntries = roomEntries.filter(entry => entry.checkout);
+    const prepayKeys = new Set(
+      roomEntries
+        .filter(entry => entry.shiftPrepay && !entry.checkout)
+        .map(entry => `${entry.roomNum}|${entry.checkin || 0}`)
+    );
+
+    return Object.values(pendingByRoom)
+      .filter(pending => !prepayKeys.has(`${pending.roomNum}|${pending.checkin || 0}`))
+      .filter(pending => {
+        const roomCheckouts = checkoutEntries.filter(checkout => checkout.roomNum === pending.roomNum);
+        if (!roomCheckouts.length) return true;
+        return roomCheckouts.every(checkout => pending.checkin >= (checkout.checkout || 0));
+      })
+      .sort((a, b) => a.roomNum - b.roomNum);
+  }
+
+  function buildDirectVitrinaEntries(allShifts) {
+    return allShifts
+      .flatMap(sh => (sh.entries || []).filter(entry => entry.type === 'vitrina-directa').map(entry => ({ ...entry })))
+      .sort((a, b) => reportEntryStart(a) - reportEntryStart(b));
+  }
+
+  function buildSpecialEntries(allShifts) {
+    return allShifts
+      .flatMap(sh => (sh.entries || []).filter(entry => entry.type === 'consumo-personal' || entry.type === 'consumo-vip').map(entry => ({ ...entry })))
+      .sort((a, b) => reportEntryStart(a) - reportEntryStart(b));
+  }
+
+  function buildShiftGroup(allShifts, type) {
+    const nowTs = Date.now();
+    const roomEntries = deduplicateRoomEntries(allShifts);
+    const pendingRooms = deduplicatePendingRooms(allShifts, roomEntries);
+    const directVitrinaEntries = buildDirectVitrinaEntries(allShifts);
+    const specialEntries = buildSpecialEntries(allShifts);
+
+    const cajaSummary = allShifts.map(getShiftCajaSnapshot).reduce((acc, caja) => {
+      acc.hab.cash += caja?.hab?.cash || 0;
+      acc.hab.qr += caja?.hab?.qr || 0;
+      acc.hab.com += caja?.hab?.com || 0;
+      acc.minibar.cash += caja?.minibar?.cash || 0;
+      acc.minibar.qr += caja?.minibar?.qr || 0;
+      acc.vitrina.cash += caja?.vitrina?.cash || 0;
+      acc.vitrina.qr += caja?.vitrina?.qr || 0;
+      acc.gastos += caja?.gastos || 0;
+      acc.cambios += caja?.totalCambios || 0;
+      return acc;
+    }, {
+      hab: { cash: 0, qr: 0, com: 0 },
+      minibar: { cash: 0, qr: 0 },
+      vitrina: { cash: 0, qr: 0 },
+      gastos: 0,
+      cambios: 0
+    });
+
+    const directVitrina = sumEntrySection(directVitrinaEntries, 'vitrina');
+    const roomVitrina = {
+      cash: Math.max(0, cajaSummary.vitrina.cash - directVitrina.cash),
+      qr: Math.max(0, cajaSummary.vitrina.qr - directVitrina.qr)
+    };
+    const specialSummary = {
+      personal: specialEntries
+        .filter(entry => entry.type === 'consumo-personal')
+        .reduce((acc, entry) => {
+          acc.count += 1;
+          acc.total += Number(entry.total) || 0;
+          return acc;
+        }, { count: 0, total: 0 }),
+      vip: specialEntries
+        .filter(entry => entry.type === 'consumo-vip')
+        .reduce((acc, entry) => {
+          acc.count += 1;
+          acc.total += Number(entry.total) || 0;
+          return acc;
+        }, { count: 0, total: 0 })
+    };
+
+    const grossTotal =
+      cajaSummary.hab.cash + cajaSummary.hab.qr + cajaSummary.hab.com +
+      cajaSummary.minibar.cash + cajaSummary.minibar.qr +
+      cajaSummary.vitrina.cash + cajaSummary.vitrina.qr;
+
+    return {
+      type,
+      shifts: allShifts,
+      start: allShifts.length ? Math.min(...allShifts.map(sh => sh.start || nowTs)) : null,
+      end: allShifts.length ? Math.max(...allShifts.map(sh => {
+        if (sh.end) return sh.end;
+        if (currentShift && sh.start === currentShift.start && sh.type === currentShift.type) return nowTs;
+        return sh.start || nowTs;
+      })) : null,
+      roomEntries,
+      pendingRooms,
+      directVitrinaEntries,
+      specialEntries,
+      summary: {
+        hab: {
+          cash: cajaSummary.hab.cash,
+          qr: cajaSummary.hab.qr,
+          comision: cajaSummary.hab.com,
+          total: cajaSummary.hab.cash + cajaSummary.hab.qr + cajaSummary.hab.com
+        },
+        minibar: {
+          cash: cajaSummary.minibar.cash,
+          qr: cajaSummary.minibar.qr,
+          total: cajaSummary.minibar.cash + cajaSummary.minibar.qr
+        },
+        vitrinaHabitaciones: {
+          cash: roomVitrina.cash,
+          qr: roomVitrina.qr,
+          total: roomVitrina.cash + roomVitrina.qr
+        },
+        vitrinaDirecta: {
+          cash: directVitrina.cash,
+          qr: directVitrina.qr,
+          total: directVitrina.cash + directVitrina.qr
+        },
+        special: specialSummary,
+        ajustes: {
+          cambios: cajaSummary.cambios,
+          gastos: cajaSummary.gastos
+        },
+        prepayCount: roomEntries.filter(entry => entry.shiftPrepay && !entry.checkout).length,
+        pendingCount: pendingRooms.length,
+        attendedCount: roomEntries.filter(entry => entry.checkout && !entry.shiftPrepay).length,
+        grossTotal
+      }
+    };
+  }
+
+  const dayGroup = buildShiftGroup(reportShifts.filter(shift => shift.type === 'day'), 'day');
+  const nightGroup = buildShiftGroup(reportShifts.filter(shift => shift.type === 'night'), 'night');
+  const general = {
+    hab: {
+      cash: dayGroup.summary.hab.cash + nightGroup.summary.hab.cash,
+      qr: dayGroup.summary.hab.qr + nightGroup.summary.hab.qr,
+      comision: dayGroup.summary.hab.comision + nightGroup.summary.hab.comision
+    },
+    minibar: {
+      cash: dayGroup.summary.minibar.cash + nightGroup.summary.minibar.cash,
+      qr: dayGroup.summary.minibar.qr + nightGroup.summary.minibar.qr
+    },
+    vitrinaHabitaciones: {
+      cash: dayGroup.summary.vitrinaHabitaciones.cash + nightGroup.summary.vitrinaHabitaciones.cash,
+      qr: dayGroup.summary.vitrinaHabitaciones.qr + nightGroup.summary.vitrinaHabitaciones.qr
+    },
+    vitrinaDirecta: {
+      cash: dayGroup.summary.vitrinaDirecta.cash + nightGroup.summary.vitrinaDirecta.cash,
+      qr: dayGroup.summary.vitrinaDirecta.qr + nightGroup.summary.vitrinaDirecta.qr
+    },
+    special: {
+      personal: {
+        count: dayGroup.summary.special.personal.count + nightGroup.summary.special.personal.count,
+        total: dayGroup.summary.special.personal.total + nightGroup.summary.special.personal.total
+      },
+      vip: {
+        count: dayGroup.summary.special.vip.count + nightGroup.summary.special.vip.count,
+        total: dayGroup.summary.special.vip.total + nightGroup.summary.special.vip.total
+      }
+    },
+    ajustes: {
+      cambios: dayGroup.summary.ajustes.cambios + nightGroup.summary.ajustes.cambios,
+      gastos: dayGroup.summary.ajustes.gastos + nightGroup.summary.ajustes.gastos
+    },
+    prepayCount: dayGroup.summary.prepayCount + nightGroup.summary.prepayCount,
+    pendingCount: dayGroup.summary.pendingCount + nightGroup.summary.pendingCount,
+    attendedCount: dayGroup.summary.attendedCount + nightGroup.summary.attendedCount
+  };
+  general.grossTotal = dayGroup.summary.grossTotal + nightGroup.summary.grossTotal;
+
+  return {
+    opDateKey,
+    fechaHoy: new Date(`${opDateKey}T12:00:00Z`).toLocaleDateString('es-BO', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC'
+    }),
+    files: buildDailyReportFileNames(opDateKey),
+    dayGroup,
+    nightGroup,
+    general
+  };
+}
+
+function renderShiftSummaryRows(summary) {
+  const rows = [
+    ['Alojamiento', summary.hab.cash, summary.hab.qr + summary.hab.comision, summary.hab.total],
+    ['Minibar habitaciones', summary.minibar.cash, summary.minibar.qr, summary.minibar.total],
+    ['Vitrina habitaciones', summary.vitrinaHabitaciones.cash, summary.vitrinaHabitaciones.qr, summary.vitrinaHabitaciones.total],
+    ['Vitrina directa', summary.vitrinaDirecta.cash, summary.vitrinaDirecta.qr, summary.vitrinaDirecta.total],
+    [
+      'TOTAL BRUTO',
+      summary.hab.cash + summary.minibar.cash + summary.vitrinaHabitaciones.cash + summary.vitrinaDirecta.cash,
+      summary.hab.qr + summary.hab.comision + summary.minibar.qr + summary.vitrinaHabitaciones.qr + summary.vitrinaDirecta.qr,
+      summary.grossTotal
+    ]
+  ];
+
+  return rows.map(([label, cash, qr, total], index) => {
+    const rowClass = index === rows.length - 1 ? 'summary-total' : '';
+    return `<tr class="${rowClass}">
+      <td>${escapeReportHtml(label)}</td>
+      <td>${formatCashValue(cash)}</td>
+      <td>${formatQrValue(qr)}</td>
+      <td>${formatCashValue(total)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function buildRoomReportRows(entries, pendingRooms) {
+  const pendingRows = (pendingRooms || []).map(room => {
+    const prepaidLabel = room.prepaid
+      ? ` · Prepago ${formatPaymentValue(room.prepaid.cash || 0, room.prepaid.qr || 0)}`
+      : '';
+    return `<tr class="pending-row">
+      <td>🔸 ${room.roomNum}</td>
+      <td>${formatReportTime(room.checkin)}</td>
+      <td>⏳ Pendiente</td>
+      <td colspan="4">Pasa al siguiente turno${escapeReportHtml(prepaidLabel)}</td>
+      <td>${escapeReportHtml((room.guest || '').split(' ').slice(1).join(' ') || room.guest || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  if (!(entries || []).length && !pendingRows) {
+    return '<tr><td colspan="8" style="text-align:center;color:#777;padding:12px">Sin registros</td></tr>';
+  }
+
+  const entryRows = (entries || []).map(entry => {
+    const p = entry.pago || {};
+    const habCash = (p.hab?.cash || 0) + (p.hab?.prepaidCash || 0);
+    const habQr = (p.hab?.qr || 0) + (p.hab?.prepaidQr || 0);
+    const habComision = p.hab?.comision || 0;
+    const mbCash = p.minibar?.cash || 0;
+    const mbQr = p.minibar?.qr || 0;
+    const vitCash = p.vitrina?.cash || 0;
+    const vitQr = p.vitrina?.qr || 0;
+
+    if (entry.shiftPrepay && !entry.checkout) {
+      return `<tr class="prepay-row">
+        <td>💰 ${entry.roomNum}</td>
+        <td>${formatReportTime(entry.checkin)}</td>
+        <td>Prepago</td>
+        <td>${formatPaymentValue(p.hab?.prepaidCash || 0, p.hab?.prepaidQr || 0)}</td>
+        <td colspan="3">Pago al cierre, continua en habitacion</td>
+        <td>${escapeReportHtml((entry.guest || '').split(' ').slice(1).join(' ') || entry.guest || '—')}</td>
+      </tr>`;
     }
-    return new Date().toLocaleDateString('es-BO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  })();
+
+    const habTotal = habCash + habQr + habComision;
+    const minibarTotal = mbCash + mbQr;
+    const vitrinaTotal = vitCash + vitQr;
+    const detail = (entry.minibar || []).length
+      ? escapeReportHtml(entry.minibar.map(item => `${item.name} x${item.qty}`).join(', '))
+      : escapeReportHtml(entry.breakdown || '—');
+
+    return `<tr${entry._fromPrevShift ? ' class="from-prev-row"' : ''}>
+      <td>${entry._fromPrevShift ? '🔸 ' : ''}${entry.roomNum}</td>
+      <td>${formatReportTime(entry.checkin)}</td>
+      <td>${formatReportTime(entry.checkout)}</td>
+      <td>${formatPaymentValue(habCash, habQr + habComision)}</td>
+      <td>${formatPaymentValue(mbCash, mbQr)}</td>
+      <td>${formatPaymentValue(vitCash, vitQr)}</td>
+      <td>${detail}</td>
+      <td>${escapeReportHtml((entry.guest || '').split(' ').slice(1).join(' ') || entry.guest || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  return pendingRows + entryRows;
+}
+
+function buildDirectVitrinaRows(entries) {
+  if (!entries.length) return '<tr><td colspan="5" style="text-align:center;color:#777;padding:12px">Sin ventas directas</td></tr>';
+  return entries.map(entry => {
+    const items = (entry.vitrinaItems || []).map(item => `${item.qty}x ${item.name}`).join(', ') || '—';
+    const qr = entry?.pago?.vitrina?.qr || 0;
+    const cash = entry?.pago?.vitrina?.cash || 0;
+    const method = qr > 0 && cash > 0 ? 'Mixto' : qr > 0 ? 'QR' : 'Efectivo';
+    return `<tr>
+      <td>${formatReportTime(reportEntryStart(entry))}</td>
+      <td>${escapeReportHtml(items)}</td>
+      <td>${method}</td>
+      <td>${cash > 0 ? formatCashValue(cash) : '—'}</td>
+      <td>${qr > 0 ? formatQrValue(qr) : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function buildSpecialOpsRows(entries) {
+  if (!entries.length) return '<tr><td colspan="5" style="text-align:center;color:#777;padding:12px">Sin operaciones especiales</td></tr>';
+  return entries.map(entry => {
+    const isVip = entry.type === 'consumo-vip';
+    const items = (entry.personalItems || []).map(item => `${item.qty}x ${item.name}`).join(', ') || '—';
+    const owner = entry?.pago?.personal?.empleado || entry.guest || '—';
+    const note = isVip ? 'Cortesia / VIP' : 'Informativo - no suma a caja';
+    return `<tr>
+      <td>${formatReportTime(reportEntryStart(entry))}</td>
+      <td>${isVip ? 'VIP' : 'Consumo personal'}</td>
+      <td>${escapeReportHtml(owner)}</td>
+      <td>${escapeReportHtml(items)}</td>
+      <td>${isVip ? 'Bs 0' : `Bs ${entry.total || 0}`}</td>
+    </tr>
+    <tr class="special-note-row">
+      <td colspan="5">${escapeReportHtml(note)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function buildDailyReportJson(report) {
+  function serializeGroup(group, label) {
+    return {
+      turno: label,
+      inicio: group.start,
+      fin: group.end,
+      resumen: group.summary,
+      habitaciones: group.roomEntries.map(entry => ({
+        roomNum: entry.roomNum,
+        guest: entry.guest || '',
+        checkin: entry.checkin || null,
+        checkout: entry.checkout || null,
+        total: entry.total || 0,
+        shiftPrepay: !!entry.shiftPrepay,
+        detail: entry.breakdown || '',
+        minibar: entry.minibar || []
+      })),
+      pendientes: group.pendingRooms,
+      vitrinaDirecta: group.directVitrinaEntries.map(entry => ({
+        ts: reportEntryStart(entry),
+        total: entry.total || 0,
+        items: entry.vitrinaItems || [],
+        pago: entry.pago?.vitrina || {}
+      })),
+      operacionesEspeciales: group.specialEntries.map(entry => ({
+        ts: reportEntryStart(entry),
+        type: entry.type,
+        guest: entry.guest || '',
+        total: entry.total || 0,
+        items: entry.personalItems || []
+      }))
+    };
+  }
+
+  return {
+    fechaOperativa: report.opDateKey,
+    generadoBolivia: NOCTA_TIME.formatDateTime(Date.now()),
+    motel: 'Motel 23',
+    archivos: report.files,
+    resumenGeneral: report.general,
+    turnoDia: serializeGroup(report.dayGroup, 'day'),
+    turnoNoche: serializeGroup(report.nightGroup, 'night')
+  };
+}
+
+async function saveReportFileStrict(nombre, contenido) {
+  const response = await fetch('/api/guardar-archivo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre, contenido })
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_) {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.error || `No se pudo guardar ${nombre}`);
+  }
+
+  return payload;
+}
+
+async function persistDailyReport(report, html, jsonText) {
+  const files = report.files;
+  await saveReportFileStrict(files.primaryHtml, html);
+  await saveReportFileStrict(files.primaryJson, jsonText);
+  await saveReportFileStrict(files.versionedHtml, html);
+  await saveReportFileStrict(files.versionedJson, jsonText);
+  return files;
+}
+
+// ─── REPORTE DIARIO IMPRIMIBLE ────────────────────────────────────────────────
+async function generateDailyPrintReport(explicitShifts, options = {}) {
+  const opts = {
+    persist: true,
+    openPdf: true,
+    showSuccess: true,
+    showError: true,
+    alertOnError: true,
+    ...options
+  };
+
+  const report = buildDailyReportContext(explicitShifts);
+  const hasData = report.dayGroup.shifts.length || report.nightGroup.shifts.length;
+  if (!hasData) {
+    if (opts.showError) toast('⚠ No hay turnos para generar el reporte diario');
+    return null;
+  }
+
+  function renderShiftSection(title, group) {
+    return `<section class="shift-section">
+      <h2>${title}</h2>
+      <div class="shift-meta">
+        <span>Turnos archivados: ${group.shifts.length}</span>
+        <span>Horario: ${group.start ? NOCTA_TIME.formatDateTime(group.start) : '—'} → ${group.end ? NOCTA_TIME.formatDateTime(group.end) : '—'}</span>
+        <span>Habitaciones atendidas: ${group.summary.attendedCount}</span>
+      </div>
+
+      <div class="summary-cards">
+        <div class="summary-card"><span>Pendientes</span><strong>${group.summary.pendingCount}</strong></div>
+        <div class="summary-card"><span>Prepagos cierre</span><strong>${group.summary.prepayCount}</strong></div>
+        <div class="summary-card"><span>Cambios</span><strong>Bs ${group.summary.ajustes.cambios}</strong></div>
+        <div class="summary-card"><span>Gastos</span><strong>Bs ${group.summary.ajustes.gastos}</strong></div>
+        <div class="summary-card"><span>Operaciones especiales</span><strong>${group.summary.special.personal.count} pers. · ${group.summary.special.vip.count} VIP</strong></div>
+      </div>
+
+      <h3>Detalle de habitaciones</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Pieza</th>
+            <th>Entrada</th>
+            <th>Salida</th>
+            <th>Habitacion</th>
+            <th>Minibar</th>
+            <th>Vitrina Hab.</th>
+            <th>Detalle</th>
+            <th>Movilidad</th>
+          </tr>
+        </thead>
+        <tbody>${buildRoomReportRows(group.roomEntries, group.pendingRooms)}</tbody>
+      </table>
+
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Efectivo</th>
+            <th>QR</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>${renderShiftSummaryRows(group.summary)}</tbody>
+      </table>
+
+      <h3>Vitrina directa</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Hora</th>
+            <th>Detalle</th>
+            <th>Metodo</th>
+            <th>Efectivo</th>
+            <th>QR</th>
+          </tr>
+        </thead>
+        <tbody>${buildDirectVitrinaRows(group.directVitrinaEntries)}</tbody>
+      </table>
+
+      <h3>Operaciones especiales <small>(informativas)</small></h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Hora</th>
+            <th>Tipo</th>
+            <th>Responsable</th>
+            <th>Detalle</th>
+            <th>Monto</th>
+          </tr>
+        </thead>
+        <tbody>${buildSpecialOpsRows(group.specialEntries)}</tbody>
+      </table>
+    </section>`;
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Reporte Diario - Motel 23 - ${explicitShifts && explicitShifts.length ? operativeDateKey(explicitShifts[0].start) : operativeDateKey(Date.now())}</title>
+<title>Reporte Diario - Motel 23 - ${report.opDateKey}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: Arial, sans-serif; font-size:11px; color:#222; padding:20px; }
+  body { font-family: Arial, sans-serif; font-size:11px; color:#222; padding:18px; }
   h1 { text-align:center; font-size:18px; margin-bottom:4px; }
-  .fecha { text-align:center; font-size:12px; color:#555; margin-bottom:16px; }
-  h2 { font-size:14px; background:#1a1a2e; color:#fff; padding:6px 12px; margin:14px 0 6px; }
-  table { width:100%; border-collapse:collapse; margin-bottom:6px; }
-  th { background:#2d2d44; color:#fff; padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; }
-  td { padding:5px 8px; border-bottom:1px solid #ddd; font-size:10.5px; }
-  tr:nth-child(even) { background:#f5f5f5; }
-  .totals-table { margin-top:2px; }
-  .totals-table th { background:#c2410c; font-size:10px; }
-  .totals-table td { font-weight:bold; font-size:11px; background:#fff3e0; }
-  .general-table th { background:#1a1a2e; }
-  .general-table td { background:#e8eaf6; font-weight:bold; font-size:12px; }
-  .separator { border:none; border-top:2px solid #1a1a2e; margin:16px 0; }
+  h2 { font-size:14px; background:#1a1a2e; color:#fff; padding:7px 12px; margin:16px 0 8px; }
+  h3 { font-size:12px; margin:12px 0 6px; color:#1a1a2e; }
+  h3 small { font-size:10px; color:#666; font-weight:normal; }
+  .fecha { text-align:center; font-size:12px; color:#555; margin-bottom:14px; text-transform:uppercase; }
+  .shift-meta { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:10px; color:#555; margin-bottom:8px; }
+  .summary-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; margin:8px 0 12px; }
+  .summary-card { background:#f4f6fb; border:1px solid #dbe1f0; border-radius:8px; padding:8px; }
+  .summary-card span { display:block; font-size:9px; color:#666; text-transform:uppercase; margin-bottom:3px; }
+  .summary-card strong { font-size:13px; color:#1a1a2e; }
+  table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+  th { background:#2d2d44; color:#fff; padding:6px 8px; text-align:left; font-size:9px; text-transform:uppercase; }
+  td { padding:5px 8px; border-bottom:1px solid #ddd; font-size:10px; vertical-align:top; }
+  .summary-table th { background:#c2410c; }
+  .summary-table td { font-weight:600; }
+  .summary-total td { background:#fff3e0; font-weight:800; }
+  .general-summary th { background:#0f172a; }
+  .general-summary td { background:#e8eefc; font-weight:700; }
+  .pending-row td { background:#fff8e1; color:#9a6700; }
+  .prepay-row td { background:#e8f5e9; color:#256029; }
+  .from-prev-row td:first-child { border-left:3px solid #e67e22; }
+  .special-note-row td { font-size:9px; color:#666; font-style:italic; background:#fafafa; }
+  .footer-note { margin-top:14px; font-size:10px; color:#666; display:flex; justify-content:space-between; gap:12px; }
+  .separator { border:none; border-top:2px solid #1a1a2e; margin:18px 0; }
+  .no-print { position:fixed; top:12px; right:16px; z-index:999; }
+  .no-print button { padding:10px 22px; font-size:14px; background:#c2410c; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; }
   @media print {
-    body { padding:10px; }
-    h2 { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .totals-table td, .general-table td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { padding:8px; }
     .no-print { display:none; }
+    h2, th, .summary-total td, .general-summary td, .pending-row td, .prepay-row td {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
   }
 </style>
 </head>
 <body>
-<div class="no-print" style="position:fixed;top:12px;right:16px;z-index:999">
-  <button onclick="window.print()" style="padding:10px 30px;font-size:14px;background:#c2410c;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold">🖨 Imprimir / Guardar PDF</button>
-</div>
-
-<div style="font-size:26px;color:#555;margin-bottom:4px;font-weight:bold;text-transform:uppercase">${fechaHoy}</div>
-<h1>🦋 REPORTE DIARIO MOTEL 23</h1>
-
-<h2>☀ TURNO MAÑANA</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Nº PIEZA</th>
-      <th>HORA ENTRADA</th>
-      <th>HORA SALIDA</th>
-      <th>HABITACIÓN</th>
-      <th>MINIBAR</th>
-      <th>VITRINA</th>
-      <th>DETALLE CONSUMO</th>
-      <th>MOVILIDAD</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${buildTableRows(morningEntries)}
-  </tbody>
-</table>
-
-<table class="totals-table">
-  <thead><tr><th>TOTAL TURNO MAÑANA</th><th>TOTAL EFECT</th><th>TOTAL QR</th><th>BEBIDAS EFECT</th><th>BEBIDAS QR</th><th>VITRINA EFECT</th><th>VITRINA QR</th></tr></thead>
-  <tbody><tr><td>Bs ${mTotals.efect + mTotals.qr + mTotals.bebidasCash + mTotals.bebidasQr + mTotals.vitrinaCash + mTotals.vitrinaQr}</td><td>Bs ${mTotals.efect}</td><td>Bs ${mTotals.qr}</td><td>Bs ${mTotals.bebidasCash}</td><td>Bs ${mTotals.bebidasQr}</td><td>Bs ${mTotals.vitrinaCash}</td><td>Bs ${mTotals.vitrinaQr}</td></tr></tbody>
-</table>
-
-<h2>🌙 TURNO NOCHE</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Nº PIEZA</th>
-      <th>HORA ENTRADA</th>
-      <th>HORA SALIDA</th>
-      <th>HABITACIÓN</th>
-      <th>MINIBAR</th>
-      <th>VITRINA</th>
-      <th>DETALLE CONSUMO</th>
-      <th>MOVILIDAD</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${buildTableRows(nightEntries)}
-  </tbody>
-</table>
-
-<table class="totals-table">
-  <thead><tr><th>TOTAL TURNO NOCHE</th><th>TOTAL EFECT</th><th>TOTAL QR</th><th>BEBIDAS EFECT</th><th>BEBIDAS QR</th><th>VITRINA EFECT</th><th>VITRINA QR</th></tr></thead>
-  <tbody><tr><td>Bs ${nTotals.efect + nTotals.qr + nTotals.bebidasCash + nTotals.bebidasQr + nTotals.vitrinaCash + nTotals.vitrinaQr}</td><td>Bs ${nTotals.efect}</td><td>Bs ${nTotals.qr}</td><td>Bs ${nTotals.bebidasCash}</td><td>Bs ${nTotals.bebidasQr}</td><td>Bs ${nTotals.vitrinaCash}</td><td>Bs ${nTotals.vitrinaQr}</td></tr></tbody>
-</table>
-
-<hr class="separator">
-
-<table class="totals-table general-table">
-  <thead><tr><th>TOTAL GENERAL</th><th>TOTAL EFECT</th><th>TOTAL QR</th><th>BEBIDAS EFECT</th><th>BEBIDAS QR</th><th>VITRINA EFECT</th><th>VITRINA QR</th></tr></thead>
-  <tbody><tr><td>Bs ${gTotals.efect + gTotals.qr + gTotals.bebidasCash + gTotals.bebidasQr + gTotals.vitrinaCash + gTotals.vitrinaQr}</td><td>Bs ${gTotals.efect}</td><td>Bs ${gTotals.qr}</td><td>Bs ${gTotals.bebidasCash}</td><td>Bs ${gTotals.bebidasQr}</td><td>Bs ${gTotals.vitrinaCash}</td><td>Bs ${gTotals.vitrinaQr}</td></tr></tbody>
-</table>
-
+  <div class="no-print"><button onclick="window.print()">🖨 Imprimir / Guardar PDF</button></div>
+  <div class="fecha">${escapeReportHtml(report.fechaHoy)}</div>
+  <h1>🦋 REPORTE DIARIO MOTEL 23</h1>
+  ${renderShiftSection('☀ TURNO DIA', report.dayGroup)}
+  ${renderShiftSection('🌙 TURNO NOCHE', report.nightGroup)}
+  <hr class="separator">
+  <h2>📊 TOTAL GENERAL</h2>
+  <table class="summary-table general-summary">
+    <thead>
+      <tr>
+        <th>Concepto</th>
+        <th>Efectivo</th>
+        <th>QR</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>${renderShiftSummaryRows({
+      hab: {
+        cash: report.general.hab.cash,
+        qr: report.general.hab.qr,
+        comision: report.general.hab.comision,
+        total: report.general.hab.cash + report.general.hab.qr + report.general.hab.comision
+      },
+      minibar: {
+        cash: report.general.minibar.cash,
+        qr: report.general.minibar.qr,
+        total: report.general.minibar.cash + report.general.minibar.qr
+      },
+      vitrinaHabitaciones: {
+        cash: report.general.vitrinaHabitaciones.cash,
+        qr: report.general.vitrinaHabitaciones.qr,
+        total: report.general.vitrinaHabitaciones.cash + report.general.vitrinaHabitaciones.qr
+      },
+      vitrinaDirecta: {
+        cash: report.general.vitrinaDirecta.cash,
+        qr: report.general.vitrinaDirecta.qr,
+        total: report.general.vitrinaDirecta.cash + report.general.vitrinaDirecta.qr
+      },
+      grossTotal: report.general.grossTotal
+    })}</tbody>
+  </table>
+  <div class="summary-cards">
+    <div class="summary-card"><span>Habitaciones atendidas</span><strong>${report.general.attendedCount}</strong></div>
+    <div class="summary-card"><span>Pendientes</span><strong>${report.general.pendingCount}</strong></div>
+    <div class="summary-card"><span>Prepagos cierre</span><strong>${report.general.prepayCount}</strong></div>
+    <div class="summary-card"><span>Operaciones especiales</span><strong>${report.general.special.personal.count} pers. · ${report.general.special.vip.count} VIP</strong></div>
+  </div>
+  <div class="footer-note">
+    <span>Operaciones especiales: consumo personal y VIP se muestran de forma informativa.</span>
+    <span>Generado: ${escapeReportHtml(NOCTA_TIME.formatDateTime(Date.now()))}</span>
+  </div>
 </body>
 </html>`;
 
-  // Si se pide solo el HTML (para guardar como PDF), retornarlo sin abrir ventana
-  if (returnOnly) return html;
+  const jsonText = JSON.stringify(buildDailyReportJson(report), null, 2);
+  let previewWindow = null;
 
-  const w = window.open('', '_blank');
-  if (w) { w.document.write(html); w.document.close(); }
-  addLog('REPORTE', `Reporte diario imprimible generado — ${morningEntries.length + nightEntries.length} checkouts`);
-  toast(`📋 Reporte diario generado — ${morningEntries.length + nightEntries.length} checkouts`);
+  try {
+    if (opts.openPdf) {
+      previewWindow = window.open('', '_blank');
+      if (previewWindow) {
+        previewWindow.document.write('<html><body style="font-family:Arial,sans-serif;padding:24px;color:#444">Generando reporte diario...</body></html>');
+        previewWindow.document.close();
+      }
+    }
+
+    if (opts.persist) {
+      toast('⏳ Generando reporte diario y PDF...');
+      await persistDailyReport(report, html, jsonText);
+    }
+
+    if (opts.openPdf) {
+      const pdfUrl = `${report.files.versionedPdfUrl}?ts=${Date.now()}`;
+      if (previewWindow) previewWindow.location = pdfUrl;
+      else window.open(pdfUrl, '_blank');
+    }
+
+    if (opts.showSuccess) {
+      addLog('REPORTE', `Reporte diario generado — ${report.opDateKey} · Bs ${report.general.grossTotal}`);
+      toast(`📄 Reporte diario listo — Bs ${report.general.grossTotal}`);
+    }
+
+    return { report, html, files: report.files };
+  } catch (error) {
+    console.error('Error generando reporte diario:', error);
+    if (previewWindow) previewWindow.close();
+    if (opts.showError) toast(`❌ No se pudo generar el PDF: ${error.message}`);
+    if (opts.alertOnError) alert(`No se pudo generar el PDF del reporte diario.\n\n${error.message}`);
+    addLog('REPORTE', `Error generando reporte diario — ${error.message}`);
+    return null;
+  }
 }

@@ -10,6 +10,7 @@ const registerContabilidadRoutes      = require('./server/contabilidad');
 const registerEstadoRoutes            = require('./server/estado');
 const registerInventarioApiRoutes     = require('./server/inventario-api');
 const registerReportesRoutes          = require('./server/reportes');
+const registerPersonalRoutes          = require('./server/personal');
 
 const app = express();
 app.use(express.json());
@@ -258,7 +259,49 @@ async function initDb() {
     );
   `);
 
+  // ── Personal (empleados + movimientos) ───────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS empleados (
+      id              SERIAL  PRIMARY KEY,
+      motel_id        INTEGER NOT NULL REFERENCES motels(id),
+      nombre          TEXT    NOT NULL,
+      cargo           TEXT,
+      telefono        TEXT,
+      activo          BOOLEAN DEFAULT true,
+      created_at      TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS personal_movimientos (
+      id              SERIAL  PRIMARY KEY,
+      motel_id        INTEGER NOT NULL REFERENCES motels(id),
+      empleado_id     INTEGER NOT NULL REFERENCES empleados(id),
+      tipo            TEXT    NOT NULL,
+      monto           REAL    NOT NULL,
+      concepto        TEXT,
+      fecha           TEXT    NOT NULL,
+      created_at      TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
   console.log('✅ Esquema multi-tenant listo');
+
+  // ── Migración: agregar cuentas RRHH a moteles existentes ────────────────
+  const rrhhAccounts = [
+    ['5004','Adelantos a Personal','gasto'],
+    ['5005','Sueldos y Salarios','gasto'],
+  ];
+  const { rows: allMotels } = await pool.query('SELECT id FROM motels');
+  for (const m of allMotels) {
+    for (const [codigo, nombre, tipo] of rrhhAccounts) {
+      await pool.query(
+        `INSERT INTO cuentas_contables (motel_id, codigo, nombre, tipo)
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        [m.id, codigo, nombre, tipo]
+      );
+    }
+  }
 
   // ── Seed: crear Motel 23 + superadmin si no existen ──────────────────────
   const { rows: [{ c }] } = await pool.query('SELECT COUNT(*) AS c FROM motels');
@@ -286,6 +329,7 @@ async function initDb() {
       ['5003','Consumo VIP','gasto'],       ['3001','Caja Inicial','capital'],
       ['1003','Caja Bebidas','activo'],     ['1004','Caja Vitrina','activo'],
       ['6001','Retiros Bebidas','gasto'],   ['6002','Retiros Vitrina','gasto'],
+      ['5004','Adelantos a Personal','gasto'], ['5005','Sueldos y Salarios','gasto'],
     ];
     for (const [codigo, nombre, tipo] of cuentas) {
       await pool.query(
@@ -325,6 +369,7 @@ registerEstadoRoutes({ app, db: pool, requireAuth });
 registerInventarioApiRoutes({ app, db: pool, requireAuth });
 registerReportesRoutes({ app, fs, path, puppeteer, baseDir: __dirname, requireAuth });
 registerContabilidadRoutes({ app, db: pool, requireAuth });
+registerPersonalRoutes({ app, db: pool, requireAuth });
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));

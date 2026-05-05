@@ -77,9 +77,9 @@
       <span>📈</span>
       <span class="rail-btn-label">Stats</span>
     </button>
-    <button class="rail-btn" id="rail-minibar" onclick="openDrawer('minibar',this)" title="Minibar">
-      <span>🛒</span>
-      <span class="rail-btn-label">Minibar</span>
+    <button class="rail-btn" id="rail-recepcion" onclick="openDrawer('recepcion',this)" title="Recepción">
+      <span>🛎</span>
+      <span class="rail-btn-label">Recepción</span>
     </button>
     <button class="rail-btn" id="rail-records" onclick="openDrawer('records',this)" title="Registros">
       <span>📋</span>
@@ -170,11 +170,43 @@
       </div>
     </div>
 
-    <!-- PANEL: MINIBAR -->
-    <div class="sidebar-panel" id="panel-minibar">
-      <input class="mb-manage-search" id="mbSearchInput" placeholder="🔍 Buscar producto..." oninput="renderMbManage()">
-      <div class="mb-manage-list" id="mbManageList"></div>
-      <button class="mb-add-btn" onclick="addNewProduct()">+ Agregar producto</button>
+    <!-- PANEL: RECEPCIÓN -->
+    <div class="sidebar-panel" id="panel-recepcion">
+      <div style="display:flex;gap:4px;margin-bottom:10px">
+        <button id="recepcion-tab-minibar" onclick="setRecepcionTab('minibar')" style="flex:1;padding:6px;border:2px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;font-weight:700;font-size:0.78rem;cursor:pointer">🛒 Minibar</button>
+        <button id="recepcion-tab-vitrina" onclick="setRecepcionTab('vitrina')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.78rem;cursor:pointer">🏪 Vitrina</button>
+      </div>
+
+      <div id="recepcion-minibar-content">
+        <input class="mb-manage-search" id="mbSearchInput" placeholder="🔍 Buscar producto..." oninput="renderMbManage()">
+        <div class="mb-manage-list" id="mbManageList"></div>
+        <button class="mb-add-btn" onclick="addNewProduct()">+ Agregar producto</button>
+      </div>
+
+      <div id="recepcion-vitrina-content" style="display:none">
+        <div class="caja-section-label">Venta directa de vitrina</div>
+        <div style="font-size:0.68rem;color:var(--text3);line-height:1.4;margin:6px 0 10px">
+          Vende productos del stock de vitrina sin asociarlos a una habitación.
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:0.75rem;font-weight:700;color:var(--text2);cursor:pointer">
+            <input type="radio" name="vitrina-pago" value="cash" checked style="accent-color:#22c55e">
+            <span>💵 Efectivo</span>
+          </label>
+          <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:0.75rem;font-weight:700;color:var(--text2);cursor:pointer">
+            <input type="radio" name="vitrina-pago" value="qr" style="accent-color:#3b82f6">
+            <span>📱 QR</span>
+          </label>
+        </div>
+        <div id="panel-vitrina-productos" style="max-height:44vh;overflow-y:auto;display:flex;flex-direction:column;gap:2px"></div>
+        <div class="caja-divider"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="font-weight:700;font-size:0.92rem;color:var(--text1)">Total: <span id="vitrina-total">Bs 0</span></div>
+          <button id="vitrina-confirmar-btn" onclick="inv_confirmVitrinaSale()" disabled style="background:#22c55e;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;font-size:0.82rem;cursor:pointer">
+            ✓ Vender
+          </button>
+        </div>
+      </div>
     </div>
     <!-- PANEL: REGISTROS -->
     <div class="sidebar-panel" id="panel-records">
@@ -378,15 +410,82 @@
 
     <!-- PANEL: PERSONAL -->
     <div class="sidebar-panel" id="panel-personal">
+      <!-- Tabs -->
       <div style="display:flex;gap:4px;margin-bottom:8px">
-        <button id="personal-mode-personal" onclick="setPersonalMode('personal')" style="flex:1;padding:6px;border:2px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer">👷 Personal</button>
-        <button id="personal-mode-vip" onclick="setPersonalMode('vip')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.8rem;cursor:pointer">👑 V.I.P.</button>
+        <button id="ptab-lista" onclick="setPersonalTab('lista')" style="flex:1;padding:6px;border:2px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;font-weight:700;font-size:0.72rem;cursor:pointer">👥 Lista</button>
+        <button id="ptab-consumo" onclick="setPersonalTab('consumo')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.72rem;cursor:pointer">🛒 Consumo</button>
+        <button id="ptab-movimiento" onclick="setPersonalTab('movimiento')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.72rem;cursor:pointer">💸 Movimiento</button>
+        <button id="ptab-cuenta" onclick="setPersonalTab('cuenta')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.72rem;cursor:pointer">📒 Cuenta</button>
       </div>
-      <div id="personal-mode-desc" style="font-size:0.65rem;color:var(--text3);margin-bottom:6px;text-align:center">Precio con Bs 1 de descuento</div>
-      <div id="personal-productos" style="max-height:50vh;overflow-y:auto"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);margin-top:8px">
-        <span style="font-weight:700;font-size:0.9rem">Total: <span id="personal-total">Bs 0</span></span>
-        <button id="personal-confirmar-btn" onclick="confirmPersonalSale()" disabled style="background:#22c55e;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-weight:700;font-size:0.8rem;cursor:pointer">✓ Registrar</button>
+
+      <!-- Tab: Lista de empleados -->
+      <div id="ptab-lista-content">
+        <div id="empleados-list"></div>
+        <div class="caja-divider"></div>
+        <div class="caja-section-label">Agregar empleado</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          <input id="emp-nombre" class="caja-input" placeholder="Nombre" />
+          <input id="emp-cargo" class="caja-input" placeholder="Cargo (opcional)" />
+          <input id="emp-telefono" class="caja-input" placeholder="Teléfono (opcional)" />
+          <button onclick="addEmpleado()" class="btn-caja-add" style="width:100%;padding:8px;font-weight:700">+ Agregar empleado</button>
+        </div>
+      </div>
+
+      <!-- Tab: Consumo (minibar personal/vip) -->
+      <div id="ptab-consumo-content" style="display:none">
+        <div style="margin-bottom:8px">
+          <select id="consumo-empleado-select" class="caja-input" style="width:100%;font-size:0.8rem;padding:6px 8px">
+            <option value="">-- Seleccionar empleado --</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:8px">
+          <button id="personal-mode-personal" onclick="setPersonalMode('personal')" style="flex:1;padding:6px;border:2px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer">👷 Personal</button>
+          <button id="personal-mode-vip" onclick="setPersonalMode('vip')" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:0.8rem;cursor:pointer">👑 V.I.P.</button>
+        </div>
+        <div id="personal-mode-desc" style="font-size:0.65rem;color:var(--text3);margin-bottom:6px;text-align:center">Precio con Bs 1 de descuento</div>
+        <div id="personal-productos" style="max-height:40vh;overflow-y:auto"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);margin-top:8px">
+          <span style="font-weight:700;font-size:0.9rem">Total: <span id="personal-total">Bs 0</span></span>
+          <button id="personal-confirmar-btn" onclick="confirmPersonalSale()" disabled style="background:#22c55e;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-weight:700;font-size:0.8rem;cursor:pointer">✓ Registrar</button>
+        </div>
+      </div>
+
+      <!-- Tab: Registrar movimiento -->
+      <div id="ptab-movimiento-content" style="display:none">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <select id="mov-empleado-select" class="caja-input" style="width:100%;font-size:0.8rem;padding:6px 8px">
+            <option value="">-- Seleccionar empleado --</option>
+          </select>
+          <select id="mov-tipo" class="caja-input" style="width:100%;font-size:0.8rem;padding:6px 8px">
+            <option value="adelanto">💵 Adelanto de sueldo</option>
+            <option value="pago">💰 Pago de sueldo</option>
+            <option value="multa">⚠️ Multa / Descuento</option>
+            <option value="bonificacion">🎁 Bonificación</option>
+            <option value="consumo">🛒 Consumo (fiado)</option>
+            <option value="nota">📝 Nota / Ajuste</option>
+          </select>
+          <input id="mov-monto" type="number" class="caja-input caja-input-num" style="width:100%" placeholder="Monto (Bs)" min="0" step="0.5" />
+          <input id="mov-concepto" class="caja-input" placeholder="Concepto / Detalle" />
+          <button onclick="submitMovimiento()" class="btn-caja-add" style="width:100%;padding:8px;font-weight:700">✓ Registrar movimiento</button>
+        </div>
+        <div class="caja-divider"></div>
+        <div style="font-size:0.65rem;color:var(--text3);text-align:center">
+          Adelanto, consumo, multa = empleado DEBE &nbsp;|&nbsp; Pago, bonificación = se le ABONA
+        </div>
+      </div>
+
+      <!-- Tab: Cuenta / Estado de cuenta -->
+      <div id="ptab-cuenta-content" style="display:none">
+        <div style="margin-bottom:8px">
+          <select id="cuenta-empleado-select" class="caja-input" style="width:100%;font-size:0.8rem;padding:6px 8px" onchange="renderCuenta()">
+            <option value="">-- Seleccionar empleado --</option>
+          </select>
+        </div>
+        <div id="cuenta-resumen" style="text-align:center;padding:8px 0"></div>
+        <div class="caja-divider"></div>
+        <div id="cuenta-movimientos" style="max-height:55vh;overflow-y:auto">
+          <div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px">Seleccione un empleado</div>
+        </div>
       </div>
     </div>
 
@@ -796,6 +895,7 @@
 <script src="js/time-utils.js"></script>
 <script src="js/caja-turno.js"></script>
 <script src="js/minibar-vitrina.js"></script>
+<script src="js/personal.js"></script>
 <script src="app.js"></script>
 <script src="js/core-operativo.js"></script>
 <script src="js/reportes-backups.js"></script>
